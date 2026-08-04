@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 900" role="img" aria-labelledby="title desc">
+  <title id="title">Вертолёт над Антальей</title><desc id="desc">Панорамный полёт на вертолёте над турецким побережьем</desc>
+  <rect width="1200" height="900" fill="#b9d7df"/><path d="M0 530c220-100 392-70 585-18 202 55 386 41 615-61v449H0z" fill="#4e8f98"/><path d="M0 720c206-98 362-117 575-38 210 78 383 82 625-14v232H0z" fill="#d5c29b"/>
+  <g fill="#27343a" stroke="#172126" stroke-width="10"><path d="M310 403c75-68 196-77 294-20l105 61-25 56-163-42-101 56-155-20z"/><path d="M512 394 684 250l26 23-124 157z"/><path d="M656 250 425 245v-18h235z"/><path d="M421 246 270 199v-15l173 37z"/><path d="M370 466 277 567h-37l72-129zM641 467l83 104h-38l-88-88z"/></g><path d="M357 408h224" stroke="#8fc3ca" stroke-width="16" opacity=".8"/><circle cx="516" cy="441" r="20" fill="#d8eff0"/><path d="M0 530c220-100 392-70 585-18 202 55 386 41 615-61" fill="none" stroke="#e6f1e8" stroke-width="8" opacity=".55"/>
+</svg>

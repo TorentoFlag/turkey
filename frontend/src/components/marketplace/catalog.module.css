@@ -1,0 +1,72 @@
+.catalog { display: grid; gap: 0; min-width: 0; }
+.scenarioPicker { display: grid; gap: 1.25rem; margin-bottom: clamp(2.5rem, 5vw, 4rem); padding: 1.4rem 0 2rem; border-top: 1px solid rgba(36, 39, 33, 0.18); border-bottom: 1px solid rgba(36, 39, 33, 0.18); }
+.scenarioIntro { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; }
+.scenarioIntro p, .contextFormIntro p { max-width: 36rem; margin: 0; color: #60645b; font-size: 0.9rem; }
+.eyebrow { color: #a54e33; font-size: 0.7rem; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; }
+.scenarioOptions { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.6rem; }
+.scenarioOption { display: grid; min-height: 5.5rem; align-content: space-between; gap: 0.75rem; padding: 1rem; border: 1px solid rgba(36, 39, 33, 0.22); border-radius: 0.9rem; background: transparent; color: #242721; text-align: left; cursor: pointer; transition: background 180ms ease, border-color 180ms ease, transform 180ms ease; }
+.scenarioOption:hover, .scenarioOption[aria-pressed="true"] { border-color: #a54e33; background: #e9e2d6; transform: translateY(-0.15rem); }
+.scenarioOptionTitle { font-size: 1rem; font-weight: 700; }
+.scenarioOptionDescription { color: #60645b; font-size: 0.75rem; line-height: 1.35; }
+.contextForm { display: grid; gap: 1.25rem; padding: 1.5rem; border: 1px solid rgba(36, 39, 33, 0.18); background: #e9e2d6; }
+.contextFormIntro { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; }
+.formGrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1rem; }
+.formGrid label { display: grid; gap: 0.45rem; color: #60645b; font-size: 0.75rem; }
+.formGrid input, .formGrid select { width: 100%; min-width: 0; }
+.formGrid small { color: #60645b; font-size: 0.68rem; }
+.formWide { grid-column: span 2; }
+.formChecks { display: flex; flex-wrap: wrap; gap: 1rem; color: #454940; font-size: 0.8rem; }
+.formChecks label { display: inline-flex; align-items: center; gap: 0.45rem; min-height: 2.5rem; }
+.formChecks input { accent-color: #a54e33; }
+.primaryAction { justify-self: start; min-height: 2.8rem; padding: 0.75rem 1.1rem; border: 1px solid #242721; border-radius: 999px; background: #242721; color: #fffdf8; cursor: pointer; }
+.quickFilters { display: grid; gap: 0.8rem; margin-bottom: clamp(2.5rem, 5vw, 4rem); padding: 0; }
+.subcategoryFilters { display: grid; gap: 0.65rem; padding-top: 0.35rem; }
+.quickFiltersLabel { color: #60645b; font-size: 0.75rem; font-weight: 700; letter-spacing: 0.04em; }
+.quickFilterList { display: flex; flex-wrap: wrap; gap: 0.6rem; }
+.quickFilter, .clearButton, .emptyState button, .moreResults button { border: 1px solid rgba(36, 39, 33, 0.3); border-radius: 999px; background: transparent; color: #242721; cursor: pointer; transition: background 220ms ease, border-color 220ms ease, color 220ms ease, transform 220ms ease; }
+.quickFilter { min-height: 2.75rem; padding: 0.65rem 1rem; border-color: rgba(36, 39, 33, 0.2); background: rgba(255, 253, 248, 0.28); font-size: 0.8125rem; }
+.quickFilter:hover, .clearButton:hover, .emptyState button:hover, .moreResults button:hover { border-color: #a54e33; color: #a54e33; transform: translateY(-1px); }
+.quickFilter[aria-pressed="true"] { border-color: #242721; background: #242721; color: #fffdf8; }
+.filterDisclosure { overflow: hidden; border-top: 1px solid rgba(36, 39, 33, 0.18); border-bottom: 1px solid rgba(36, 39, 33, 0.18); background: transparent; }
+.filterDisclosure summary { display: flex; align-items: center; justify-content: space-between; min-height: 4rem; gap: 1rem; cursor: pointer; padding: 0.9rem 0; color: #242721; font-weight: 700; list-style: none; transition: color 180ms ease; }
+.filterDisclosure summary:hover { color: #a54e33; }
+.filterDisclosure summary::-webkit-details-marker { display: none; }
+.filterSummaryTitle { color: #242721; }
+.filterSummaryMeta { display: inline-flex; align-items: center; gap: 0.8rem; color: #60645b; font-size: 0.75rem; font-weight: 400; }
+.filterSummaryMeta span:first-child { color: #a54e33; font-weight: 700; }
+.filterSummaryMeta .clearButton { padding: 0.45rem 0.75rem; font-size: 0.75rem; }
+.filterBody { display: grid; gap: 0; padding: 0 0 1.5rem; }
+.priceFilters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: end; gap: 1rem; padding: 0.25rem 0 0; background: transparent; }
+.priceFilters label { display: grid; gap: 0.45rem; color: #60645b; font-size: 0.75rem; }
+.priceFilters input, .sortControl select { width: 100%; min-width: 0; }
+.resultsToolbar { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 1rem; margin-bottom: 1.5rem; padding-top: 1.25rem; }
+.resultCount { margin: 0; font-size: clamp(1.4rem, 2.5vw, 2.25rem); font-weight: 500; letter-spacing: -0.045em; }
+.sortControl { display: grid; gap: 0.4rem; min-width: min(100%, 15rem); color: #60645b; font-size: 0.75rem; }
+.serviceList { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: clamp(1rem, 2vw, 1.75rem); min-width: 0; }
+.serviceList > article { grid-column: auto; }
+.emptyState { display: grid; gap: 0.85rem; max-width: 36rem; padding: clamp(2rem, 5vw, 4rem) 0; border-top: 1px solid rgba(36, 39, 33, 0.2); border-bottom: 1px solid rgba(36, 39, 33, 0.2); }
+.emptyState h2, .emptyState p { margin: 0; }
+.emptyState h2 { font-family: "Literata", Georgia, serif; font-size: clamp(1.8rem, 4vw, 2.8rem); font-weight: 400; }
+.emptyState p, .moreResults p { color: #60645b; }
+.emptyState button, .moreResults button { justify-self: start; padding: 0.75rem 1rem; }
+.moreResults { display: grid; justify-items: start; gap: 0.75rem; padding: 1.5rem 0 0; }
+.moreResults p { margin: 0; font-size: 0.8125rem; }
+
+@media (max-width: 720px) {
+  .catalog { gap: 0; }
+  .filterDisclosure[open] summary { margin-bottom: 0.25rem; }
+  .scenarioIntro, .contextFormIntro { align-items: start; flex-direction: column; }
+  .scenarioOptions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .formGrid { grid-template-columns: 1fr; }
+  .formWide { grid-column: auto; }
+  .priceFilters { grid-template-columns: 1fr; padding: 0.75rem 0 0; }
+  .filterBody { padding-inline: 0; }
+  .filterDisclosure summary { padding-inline: 0; }
+  .resultsToolbar { align-items: stretch; }
+  .sortControl { min-width: 0; width: 100%; }
+  .serviceList { grid-template-columns: 1fr; gap: 1rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .catalog * { transition: none !important; }
+}
