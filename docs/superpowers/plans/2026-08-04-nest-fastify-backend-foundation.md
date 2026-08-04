@@ -473,6 +473,8 @@ git commit -m "feat(backend): add outbox worker foundation"
 
 **Produces:** reproducible non-secret local runbook and evidence-backed independent acceptance.
 
+If the prescribed clean run exposes a defect in a foundation command, fix only that command with a failing regression test before repeating acceptance. In particular, `db:migrate` must load the local `backend/.env` contract before calling `parseEnv`, just as the Nest ConfigModule does for application startup; use the Node 24 built-in environment-file support rather than adding a dotenv dependency.
+
 - [ ] **Step 1: Write runbook**
 
 Document exact commands:

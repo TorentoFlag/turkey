@@ -18,7 +18,7 @@
     "test": "vitest run --config test/vitest.unit.config.ts",
     "test:integration": "vitest run --config test/vitest.integration.config.ts",
     "db:generate": "drizzle-kit generate --config drizzle.config.ts",
-    "db:migrate": "tsx src/database/migrate.ts",
+    "db:migrate": "node --env-file=.env --import tsx src/database/migrate.ts",
     "db:check": "drizzle-kit check --config drizzle.config.ts",
     "verify": "npm run lint && npm run format:check && npm run typecheck && npm run db:check && npm run test && npm run test:integration && npm run build"
   },
