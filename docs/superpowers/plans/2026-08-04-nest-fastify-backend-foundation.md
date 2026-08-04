@@ -89,8 +89,8 @@ type NewOutboxEvent = Readonly<{
 
 class OutboxRepository {
   enqueue(event: NewOutboxEvent): Promise<void>;
-  claimPending(limit: number): Promise<ReadonlyArray<OutboxEvent>>;
-  markDelivered(id: string): Promise<void>;
+  claimPending(limit: number): Promise<ReadonlyArray<ClaimedOutboxEvent>>;
+  markDelivered(id: string, claimToken: string): Promise<boolean>;
 }
 ~~~
 
@@ -273,6 +273,7 @@ git commit -m "feat(backend): add validated Nest configuration"
 - Create: backend/src/database/database.module.ts, backend/src/database/database.service.ts, backend/src/database/migrate.ts
 - Create: backend/drizzle/0000_initial_outbox.sql, backend/drizzle/meta/_journal.json
 - Create: backend/test/support/postgres.ts, backend/test/database.integration.spec.ts, backend/test/vitest.integration.config.ts
+- Modify: backend/test/vitest.unit.config.ts to exclude **/*.integration.spec.ts from the unit suite
 - Test: backend/test/database.integration.spec.ts
 
 **Consumes:** AppEnv and config module.
@@ -291,6 +292,8 @@ expect(result.rows).toHaveLength(1);
 ~~~
 
 Run npm run test:integration. Expected: RED because migration/database code is absent. The test must not read the local 5433 connection string.
+
+The unit Vitest project must exclude **/*.integration.spec.ts, so npm test remains a no-Docker unit suite and npm run test:integration is the only command that starts Testcontainers.
 
 - [ ] **Step 2: Define minimal outbox data and generate reviewed SQL**
 
@@ -327,6 +330,7 @@ git commit -m "feat(backend): add Drizzle outbox migration"
 - Create: backend/src/app.module.ts, backend/src/main.ts
 - Create: backend/src/common/app-factory.ts, backend/src/common/request-context.ts
 - Create: backend/src/common/health/health.module.ts, backend/src/common/health/health.controller.ts, backend/src/common/health/health.service.ts
+- Modify: backend/tsconfig.json to enable Nest controller decorator compiler options
 - Create: backend/test/health.integration.spec.ts
 - Test: backend/test/health.integration.spec.ts
 
@@ -374,6 +378,8 @@ NestFactory.create<NestFastifyApplication>(
 
 Register Fastify onRequest hook: preserve non-empty incoming x-request-id, otherwise crypto.randomUUID(); emit it in response header. HealthService only calls database.ping(). Controller returns { status: 'ok' } or throws ServiceUnavailableException({ status: 'unavailable' }) without DB error text. main.ts listens on validated port only when invoked as API entrypoint.
 
+Enable `experimentalDecorators: true` and `emitDecoratorMetadata: true` in backend/tsconfig.json before compiling Nest controllers; this is a compiler prerequisite, not a new feature.
+
 - [ ] **Step 4: Verify green through Fastify**
 
 ~~~
@@ -399,6 +405,8 @@ git commit -m "feat(backend): add Fastify health readiness"
 - Create: backend/src/worker.ts
 - Create: backend/src/modules/notifications/notifications.module.ts, outbox.repository.ts, outbox.worker.ts
 - Create: module files in modules/auth, catalog, orders, payments, audit
+- Modify: backend/src/database/schema/outbox-events.ts
+- Create: next generated backend/drizzle migration for claim ownership
 - Create: backend/test/worker.integration.spec.ts
 - Test: backend/test/worker.integration.spec.ts
 
@@ -419,7 +427,7 @@ await repository.enqueue({
 });
 ~~~
 
-Assert duplicate idempotency key is deterministically ignored/rejected, claimPending(10) returns once, markDelivered(id) removes it from next claim, and worker.runOnce() does not call a spy on globalThis.fetch. Close Nest context and pool.
+Assert duplicate idempotency key is deterministically ignored/rejected, concurrent claimers receive an event once, multiple events preserve creation order, future `next_attempt_at` rows are excluded, an expired lease is reclaimed with a new claim token, a stale token cannot mark delivery, the active token marks delivery once, and worker.runOnce() does not call a spy on globalThis.fetch. Run the worker entrypoint as a child process and prove it exits after one pass, which demonstrates its Nest context and database pool close.
 
 - [ ] **Step 2: Run worker test to prove red**
 
@@ -432,7 +440,7 @@ Expected: RED because notifications/outbox module is absent.
 
 - [ ] **Step 3: Implement transaction-ready persistence without dispatch**
 
-enqueue() inserts with onConflictDoNothing for idempotency_key. claimPending(limit) uses PostgreSQL transaction with FOR UPDATE SKIP LOCKED, selects only undelivered/due events ordered by creation, increments attempts and returns claimed data. markDelivered() assigns delivered_at once. OutboxWorker.runOnce() claims and logs only safe ID/type, never fetches/sends. worker.ts uses NestFactory.createApplicationContext(AppModule) and closes on SIGINT/SIGTERM. Create empty module boundaries with no controllers or fake endpoints.
+enqueue() inserts with onConflictDoNothing for idempotency_key. claimPending(limit) uses a PostgreSQL transaction with FOR UPDATE SKIP LOCKED, selects only undelivered/due events ordered by creation, increments attempts, installs a fresh UUID claim token plus lease, and returns claimed data. markDelivered(id, claimToken) assigns delivered_at only for the matching unexpired active claim, clears claim ownership, and returns whether the row changed. OutboxWorker.runOnce() claims and logs only safe ID/type, never fetches/sends or fakes delivery. worker.ts uses NestFactory.createApplicationContext(AppModule), retains SIGINT/SIGTERM shutdown hooks, and closes the context in finally after runOnce. Create empty module boundaries with no controllers or fake endpoints.
 
 - [ ] **Step 4: Verify full foundation**
 

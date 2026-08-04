@@ -1,0 +1,38 @@
+import type { StartedPostgreSqlContainer } from '@testcontainers/postgresql';
+import { Pool } from 'pg';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { runMigrations } from '../src/database/migrate.js';
+import { startPostgres } from './support/postgres.js';
+
+describe('database migrations', () => {
+  const previousDatabaseUrl = process.env.DATABASE_URL;
+  let postgres: StartedPostgreSqlContainer;
+  let pool: Pool;
+
+  beforeAll(async () => {
+    postgres = await startPostgres();
+    process.env.DATABASE_URL = postgres.getConnectionUri();
+    pool = new Pool({ connectionString: process.env.DATABASE_URL });
+
+    await runMigrations(process.env.DATABASE_URL);
+  });
+
+  afterAll(async () => {
+    await pool?.end();
+    await postgres?.stop();
+
+    if (previousDatabaseUrl === undefined) {
+      delete process.env.DATABASE_URL;
+    } else {
+      process.env.DATABASE_URL = previousDatabaseUrl;
+    }
+  });
+
+  it('creates outbox_events on a clean PostgreSQL database', async () => {
+    const result = await pool.query(
+      "select table_name from information_schema.tables where table_schema = 'public' and table_name = 'outbox_events'",
+    );
+
+    expect(result.rows).toHaveLength(1);
+  });
+});
