@@ -10,6 +10,8 @@ import {
   orders,
   auditLog,
   outboxEvents,
+  payments,
+  refunds,
   type Order,
   type Product,
 } from '../../database/schema/index.js';
@@ -146,11 +148,32 @@ export class OrdersService {
     return records.map(toOrderResponse);
   }
 
-  async listForAdmin(): Promise<Order[]> {
-    return this.database.db
-      .select()
+  async listForAdmin() {
+    const records = await this.database.db
+      .select({
+        order: orders,
+        payment: {
+          state: payments.state,
+          providerPaymentId: payments.providerPaymentId,
+        },
+        refund: {
+          state: refunds.state,
+          providerRefundId: refunds.providerRefundId,
+          requestedAt: refunds.requestedAt,
+          confirmedAt: refunds.confirmedAt,
+          errorMessage: refunds.errorMessage,
+        },
+      })
       .from(orders)
+      .leftJoin(payments, eq(payments.orderId, orders.id))
+      .leftJoin(refunds, eq(refunds.paymentId, payments.id))
       .orderBy(desc(orders.createdAt), desc(orders.id));
+
+    return records.map(({ order, payment, refund }) => ({
+      ...order,
+      payment,
+      refund,
+    }));
   }
 
   async updateProcessing(
