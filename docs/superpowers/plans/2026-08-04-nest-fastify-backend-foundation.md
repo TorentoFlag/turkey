@@ -1,5 +1,7 @@
 # NestJS backend foundation Implementation Plan
 
+> **Execution policy update (2026-08-04):** пользователь потребовал выполнять всю дальнейшую работу напрямую в `main`. Это правило отменяет ссылки ниже на feature-ветку и worktree; исторические записи Task 1 сохранены только как факт уже выполненного импорта.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox syntax for tracking.
 
 **Goal:** Создать проверяемую основу backend: NestJS API на Fastify, PostgreSQL/Drizzle migrations, health/readiness, безопасную config validation и отдельный worker с outbox persistence — без продуктовых endpoint-ов и внешних side effects.
