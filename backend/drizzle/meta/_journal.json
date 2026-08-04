@@ -50,6 +50,13 @@
       "when": 1785869368957,
       "tag": "0006_chief_archangel",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1785869935835,
+      "tag": "0007_dry_albert_cleary",
+      "breakpoints": true
     }
   ]
 }

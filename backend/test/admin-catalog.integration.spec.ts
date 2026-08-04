@@ -1090,6 +1090,46 @@ describe('admin catalog API', () => {
         },
       ],
     });
+
+    fetchMock.mockResolvedValueOnce(
+      Response.json(
+        {
+          id: '018f71c1-4afe-7b1d-9f55-123456789ac0',
+          payment_id: '018f71c1-4afe-7b1d-9f55-123456789abf',
+          amount: 1_990,
+          currency: 'RUB',
+          status: 'succeeded',
+          created_at: '2026-08-04T18:00:00.000Z',
+        },
+        { status: 201 },
+      ),
+    );
+    const refund = await app.inject({
+      method: 'POST',
+      url: `/v1/admin/orders/${orderId}/refund`,
+      headers: adminHeaders(),
+    });
+
+    expect(refund.statusCode).toBe(201);
+    expect(refund.json()).toMatchObject({
+      amountMinor: 1_990,
+      currency: 'RUB',
+      state: 'succeeded',
+      providerRefundId: '018f71c1-4afe-7b1d-9f55-123456789ac0',
+    });
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      'https://arc.example.test/v1/payments/018f71c1-4afe-7b1d-9f55-123456789abf/refunds',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ amount: 1_990 }),
+      }),
+    );
+    const duplicateRefund = await app.inject({
+      method: 'POST',
+      url: `/v1/admin/orders/${orderId}/refund`,
+      headers: adminHeaders(),
+    });
+    expect(duplicateRefund.statusCode).toBe(409);
   });
 
   it('rejects an Arc webhook before parsing an unsigned body', async () => {

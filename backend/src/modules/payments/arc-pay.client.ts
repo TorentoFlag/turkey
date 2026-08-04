@@ -19,6 +19,14 @@ const checkoutSessionSchema = z.object({
   url: z.string().url(),
 });
 
+const refundSchema = z.object({
+  id: z.uuid(),
+  payment_id: z.uuid(),
+  amount: z.number().int().positive(),
+  currency: z.string().length(3),
+  status: z.enum(['pending', 'succeeded', 'failed']),
+});
+
 export type CreateArcCheckoutInput = Readonly<{
   amountMinor: number;
   currency: string;
@@ -32,6 +40,11 @@ export type CreateArcCheckoutInput = Readonly<{
 export type ArcCheckoutSession = Readonly<{
   id: string;
   url: string;
+}>;
+
+export type ArcRefund = Readonly<{
+  id: string;
+  status: 'pending' | 'succeeded' | 'failed';
 }>;
 
 @Injectable()
@@ -117,6 +130,42 @@ export class ArcPayClient {
     }
 
     return checkout.data;
+  }
+
+  async createFullRefund(input: {
+    providerPaymentId: string;
+    amountMinor: number;
+    idempotencyKey: string;
+  }): Promise<ArcRefund> {
+    const apiKey = this.config.get('ARC_SECRET_API_KEY', { infer: true });
+
+    if (!apiKey) {
+      throw new ServiceUnavailableException(
+        'Refunds are temporarily unavailable.',
+      );
+    }
+
+    const response = await this.request(
+      `payments/${input.providerPaymentId}/refunds`,
+      {
+        body: JSON.stringify({ amount: input.amountMinor }),
+        headers: {
+          ...this.authorizationHeaders(apiKey),
+          'content-type': 'application/json',
+          'idempotency-key': input.idempotencyKey,
+        },
+        method: 'POST',
+      },
+    );
+    const refund = refundSchema.safeParse(response);
+
+    if (!refund.success) {
+      throw new ServiceUnavailableException(
+        'Refunds are temporarily unavailable.',
+      );
+    }
+
+    return { id: refund.data.id, status: refund.data.status };
   }
 
   private authorizationHeaders(apiKey: string): HeadersInit {
