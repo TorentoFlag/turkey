@@ -1,5 +1,5 @@
-import { Injectable } from '@nestjs/common';
-import { and, eq, inArray, isNull, lte, or, sql } from 'drizzle-orm';
+import { Inject, Injectable } from '@nestjs/common';
+import { and, eq, gt, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { DatabaseService } from '../../database/database.service.js';
 import {
   outboxEvents,
@@ -11,11 +11,20 @@ export type OutboxEventInput = Readonly<
   Pick<NewOutboxEvent, 'type' | 'aggregateId' | 'idempotencyKey' | 'payload'>
 >;
 
+export type ClaimedOutboxEvent = Readonly<
+  OutboxEvent & {
+    claimToken: string;
+    nextAttemptAt: Date;
+  }
+>;
+
 const CLAIM_LEASE_SECONDS = 30;
 
 @Injectable()
 export class OutboxRepository {
-  constructor(private readonly database: DatabaseService) {}
+  constructor(
+    @Inject(DatabaseService) private readonly database: DatabaseService,
+  ) {}
 
   async enqueue(event: OutboxEventInput): Promise<void> {
     await this.database.db
@@ -24,7 +33,9 @@ export class OutboxRepository {
       .onConflictDoNothing({ target: outboxEvents.idempotencyKey });
   }
 
-  async claimPending(limit: number): Promise<ReadonlyArray<OutboxEvent>> {
+  async claimPending(
+    limit: number,
+  ): Promise<ReadonlyArray<ClaimedOutboxEvent>> {
     if (!Number.isInteger(limit) || limit <= 0) {
       return [];
     }
@@ -54,6 +65,7 @@ export class OutboxRepository {
         .update(outboxEvents)
         .set({
           attempts: sql`${outboxEvents.attempts} + 1`,
+          claimToken: sql`gen_random_uuid()`,
           nextAttemptAt: sql`now() + ${CLAIM_LEASE_SECONDS} * interval '1 second'`,
         })
         .where(
@@ -67,16 +79,38 @@ export class OutboxRepository {
         candidates.map(({ id }, index) => [id, index] as const),
       );
 
-      return claimed.sort(
+      const ordered = claimed.sort(
         (left, right) => order.get(left.id)! - order.get(right.id)!,
       );
+
+      return ordered.map((event) => {
+        if (event.claimToken === null || event.nextAttemptAt === null) {
+          throw new Error('Claimed outbox event has no active lease.');
+        }
+
+        return {
+          ...event,
+          claimToken: event.claimToken,
+          nextAttemptAt: event.nextAttemptAt,
+        };
+      });
     });
   }
 
-  async markDelivered(id: string): Promise<void> {
-    await this.database.db
+  async markDelivered(id: string, claimToken: string): Promise<boolean> {
+    const delivered = await this.database.db
       .update(outboxEvents)
-      .set({ deliveredAt: new Date() })
-      .where(and(eq(outboxEvents.id, id), isNull(outboxEvents.deliveredAt)));
+      .set({ claimToken: null, deliveredAt: new Date(), nextAttemptAt: null })
+      .where(
+        and(
+          eq(outboxEvents.id, id),
+          eq(outboxEvents.claimToken, claimToken),
+          isNull(outboxEvents.deliveredAt),
+          gt(outboxEvents.nextAttemptAt, sql`now()`),
+        ),
+      )
+      .returning({ id: outboxEvents.id });
+
+    return delivered.length === 1;
   }
 }

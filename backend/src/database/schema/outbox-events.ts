@@ -17,6 +17,7 @@ export const outboxEvents = pgTable(
     idempotencyKey: text('idempotency_key').notNull().unique(),
     payload: jsonb('payload').$type<Record<string, unknown>>().notNull(),
     attempts: integer('attempts').default(0).notNull(),
+    claimToken: uuid('claim_token'),
     nextAttemptAt: timestamp('next_attempt_at', {
       mode: 'date',
       withTimezone: true,

@@ -6,7 +6,11 @@ async function bootstrap(): Promise<void> {
   const app = await NestFactory.createApplicationContext(AppModule);
   app.enableShutdownHooks(['SIGINT', 'SIGTERM']);
 
-  await app.get(OutboxWorker).runOnce();
+  try {
+    await app.get(OutboxWorker).runOnce();
+  } finally {
+    await app.close();
+  }
 }
 
 void bootstrap();

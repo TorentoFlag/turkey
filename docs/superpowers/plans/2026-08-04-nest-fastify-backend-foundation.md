@@ -89,8 +89,8 @@ type NewOutboxEvent = Readonly<{
 
 class OutboxRepository {
   enqueue(event: NewOutboxEvent): Promise<void>;
-  claimPending(limit: number): Promise<ReadonlyArray<OutboxEvent>>;
-  markDelivered(id: string): Promise<void>;
+  claimPending(limit: number): Promise<ReadonlyArray<ClaimedOutboxEvent>>;
+  markDelivered(id: string, claimToken: string): Promise<boolean>;
 }
 ~~~
 
@@ -405,6 +405,8 @@ git commit -m "feat(backend): add Fastify health readiness"
 - Create: backend/src/worker.ts
 - Create: backend/src/modules/notifications/notifications.module.ts, outbox.repository.ts, outbox.worker.ts
 - Create: module files in modules/auth, catalog, orders, payments, audit
+- Modify: backend/src/database/schema/outbox-events.ts
+- Create: next generated backend/drizzle migration for claim ownership
 - Create: backend/test/worker.integration.spec.ts
 - Test: backend/test/worker.integration.spec.ts
 
@@ -425,7 +427,7 @@ await repository.enqueue({
 });
 ~~~
 
-Assert duplicate idempotency key is deterministically ignored/rejected, claimPending(10) returns once, markDelivered(id) removes it from next claim, and worker.runOnce() does not call a spy on globalThis.fetch. Close Nest context and pool.
+Assert duplicate idempotency key is deterministically ignored/rejected, concurrent claimers receive an event once, multiple events preserve creation order, future `next_attempt_at` rows are excluded, an expired lease is reclaimed with a new claim token, a stale token cannot mark delivery, the active token marks delivery once, and worker.runOnce() does not call a spy on globalThis.fetch. Run the worker entrypoint as a child process and prove it exits after one pass, which demonstrates its Nest context and database pool close.
 
 - [ ] **Step 2: Run worker test to prove red**
 
@@ -438,7 +440,7 @@ Expected: RED because notifications/outbox module is absent.
 
 - [ ] **Step 3: Implement transaction-ready persistence without dispatch**
 
-enqueue() inserts with onConflictDoNothing for idempotency_key. claimPending(limit) uses PostgreSQL transaction with FOR UPDATE SKIP LOCKED, selects only undelivered/due events ordered by creation, increments attempts and returns claimed data. markDelivered() assigns delivered_at once. OutboxWorker.runOnce() claims and logs only safe ID/type, never fetches/sends. worker.ts uses NestFactory.createApplicationContext(AppModule) and closes on SIGINT/SIGTERM. Create empty module boundaries with no controllers or fake endpoints.
+enqueue() inserts with onConflictDoNothing for idempotency_key. claimPending(limit) uses a PostgreSQL transaction with FOR UPDATE SKIP LOCKED, selects only undelivered/due events ordered by creation, increments attempts, installs a fresh UUID claim token plus lease, and returns claimed data. markDelivered(id, claimToken) assigns delivered_at only for the matching unexpired active claim, clears claim ownership, and returns whether the row changed. OutboxWorker.runOnce() claims and logs only safe ID/type, never fetches/sends or fakes delivery. worker.ts uses NestFactory.createApplicationContext(AppModule), retains SIGINT/SIGTERM shutdown hooks, and closes the context in finally after runOnce. Create empty module boundaries with no controllers or fake endpoints.
 
 - [ ] **Step 4: Verify full foundation**
 
