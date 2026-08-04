@@ -1,0 +1,49 @@
+.destinationIndex { display: grid; gap: 1.5rem; }
+.destinationIndexLead { max-width: 38rem; margin: 0; color: #60645b; }
+.destinationGrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; border: 1px solid rgba(36, 39, 33, 0.2); background: rgba(36, 39, 33, 0.2); }
+
+.destinationCard { min-width: 0; background: #fffdf8; }
+.destinationCardLink { display: grid; min-height: 100%; color: inherit; text-decoration: none; }
+.destinationCardMedia { position: relative; min-height: 14rem; overflow: hidden; background: #ded6c9; }
+.destinationCardMedia img { object-fit: cover; transition: transform 450ms ease; }
+.destinationCardLink:hover .destinationCardMedia img { transform: scale(1.035); }
+.destinationCardContent { display: grid; align-content: start; gap: 0.75rem; padding: 1.25rem; }
+.destinationCardContent p { margin: 0; color: #a54e33; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase; }
+.destinationCardContent h2 { margin: 0; font-family: "Literata", Georgia, serif; font-size: clamp(1.55rem, 2.6vw, 2.2rem); font-weight: 400; line-height: 1; }
+.destinationCardContent span { color: #60645b; font-size: 0.875rem; line-height: 1.5; }
+
+.destinationDetail { display: grid; gap: clamp(2rem, 5vw, 4rem); }
+.destinationHero { display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(16rem, 1.1fr); gap: clamp(1.5rem, 4vw, 4rem); align-items: end; }
+.destinationHeroCopy { display: grid; align-content: start; gap: 1rem; }
+.destinationHeroCopy > p { margin: 0; color: #a54e33; font-size: 0.75rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; }
+.destinationHeroCopy h2 { max-width: 10ch; margin: 0; font-family: "Literata", Georgia, serif; font-size: clamp(2.5rem, 6vw, 5rem); font-weight: 400; letter-spacing: -0.05em; line-height: 0.98; }
+.destinationHeroCopy > div { display: grid; gap: 1rem; max-width: 34rem; color: #60645b; }
+.destinationHeroCopy > div p { margin: 0; }
+.destinationHeroImage { position: relative; min-height: clamp(20rem, 42vw, 32rem); overflow: hidden; background: #ded6c9; }
+.destinationHeroImage img { object-fit: cover; }
+
+.destinationServices { display: grid; gap: 1.5rem; }
+.destinationServicesHeader { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 1rem; padding-top: 1.25rem; border-top: 1px solid rgba(36, 39, 33, 0.22); }
+.destinationServicesHeader p { margin: 0; color: #60645b; }
+.destinationServicesHeader h3 { margin: 0; font-family: "Literata", Georgia, serif; font-size: clamp(1.8rem, 4vw, 3rem); font-weight: 400; line-height: 1; }
+.catalogLink { display: inline-flex; align-items: center; justify-content: center; min-height: 2.8rem; padding: 0.7rem 1rem; border: 1px solid #242721; color: #fffdf8; background: #242721; font-size: 0.8125rem; text-decoration: none; }
+.catalogLink:hover { background: transparent; color: #242721; }
+.destinationServiceList { display: grid; min-width: 0; }
+.emptyDestinationServices { max-width: 38rem; margin: 0; padding: 1.5rem; border: 1px solid rgba(36, 39, 33, 0.2); background: #fffdf8; color: #60645b; }
+
+@media (max-width: 960px) {
+  .destinationGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .destinationHero { grid-template-columns: 1fr; }
+  .destinationHeroCopy h2 { max-width: none; }
+}
+
+@media (max-width: 720px) {
+  .destinationGrid { grid-template-columns: 1fr; }
+  .destinationCardMedia { min-height: 16rem; }
+  .destinationServicesHeader { align-items: stretch; }
+  .catalogLink { width: 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .destinationIndex *, .destinationDetail * { transition: none !important; }
+}

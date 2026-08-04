@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 900" role="img" aria-labelledby="title desc">
+  <title id="title">Люксовая меховая шуба</title><desc id="desc">Силуэт длинной меховой шубы на тёплом нейтральном фоне</desc>
+  <rect width="1200" height="900" fill="#ded5c7"/><ellipse cx="600" cy="806" rx="310" ry="34" fill="#b7a999" opacity=".45"/>
+  <path d="M398 760c24-116 49-255 84-390 16-61 45-111 83-144l35-29 35 29c38 33 67 83 83 144 35 135 60 274 84 390z" fill="#302a28"/>
+  <path d="M492 253c39 31 76 49 108 54 32-5 69-23 108-54-10 87-43 147-108 188-65-41-98-101-108-188z" fill="#4b403b"/>
+  <path d="M600 305v454M493 410c35 26 71 39 107 43 36-4 72-17 107-43M455 535c50 24 98 36 145 37 47-1 95-13 145-37M428 669c58 18 115 27 172 27 57 0 114-9 172-27" fill="none" stroke="#6e5d54" stroke-width="12" opacity=".7"/>
+  <path d="M493 247c32 25 68 45 107 61 39-16 75-36 107-61" fill="none" stroke="#88756b" stroke-width="10"/>
+</svg>

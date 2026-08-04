@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 900" role="img" aria-labelledby="title desc">
+  <title id="title">Ювелирное украшение из белого золота</title><desc id="desc">Браслет с бриллиантами на нейтральном фоне</desc>
+  <rect width="1200" height="900" fill="#e7dfd4"/><ellipse cx="600" cy="470" rx="330" ry="210" fill="none" stroke="#a88b63" stroke-width="54" transform="rotate(-18 600 470)"/>
+  <ellipse cx="600" cy="470" rx="300" ry="182" fill="none" stroke="#f8f4ee" stroke-width="31" transform="rotate(-18 600 470)"/>
+  <g fill="#fffdf8" stroke="#b6a48c" stroke-width="7"><circle cx="325" cy="418" r="27"/><circle cx="405" cy="310" r="27"/><circle cx="520" cy="257" r="27"/><circle cx="650" cy="250" r="27"/><circle cx="770" cy="279" r="27"/><circle cx="870" cy="349" r="27"/><circle cx="925" cy="447" r="27"/><circle cx="920" cy="553" r="27"/><circle cx="850" cy="635" r="27"/><circle cx="735" cy="684" r="27"/><circle cx="605" cy="694" r="27"/><circle cx="478" cy="665" r="27"/><circle cx="382" cy="595" r="27"/><circle cx="330" cy="510" r="27"/></g>
+  <circle cx="602" cy="476" r="74" fill="#f9f5ed" stroke="#b69458" stroke-width="12"/><path d="m602 405 22 48 53 7-38 36 10 53-47-25-47 25 10-53-38-36 53-7z" fill="#fff" stroke="#d1bd9f" stroke-width="7"/>
+</svg>
