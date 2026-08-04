@@ -330,6 +330,7 @@ git commit -m "feat(backend): add Drizzle outbox migration"
 - Create: backend/src/app.module.ts, backend/src/main.ts
 - Create: backend/src/common/app-factory.ts, backend/src/common/request-context.ts
 - Create: backend/src/common/health/health.module.ts, backend/src/common/health/health.controller.ts, backend/src/common/health/health.service.ts
+- Modify: backend/tsconfig.json to enable Nest controller decorator compiler options
 - Create: backend/test/health.integration.spec.ts
 - Test: backend/test/health.integration.spec.ts
 
@@ -376,6 +377,8 @@ NestFactory.create<NestFastifyApplication>(
 ~~~
 
 Register Fastify onRequest hook: preserve non-empty incoming x-request-id, otherwise crypto.randomUUID(); emit it in response header. HealthService only calls database.ping(). Controller returns { status: 'ok' } or throws ServiceUnavailableException({ status: 'unavailable' }) without DB error text. main.ts listens on validated port only when invoked as API entrypoint.
+
+Enable `experimentalDecorators: true` and `emitDecoratorMetadata: true` in backend/tsconfig.json before compiling Nest controllers; this is a compiler prerequisite, not a new feature.
 
 - [ ] **Step 4: Verify green through Fastify**
 
