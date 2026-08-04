@@ -438,6 +438,36 @@ describe('admin catalog API', () => {
 
     expect(hiddenProductResponse.statusCode).toBe(404);
   });
+
+  it('registers a user and authenticates the resulting server session', async () => {
+    app = await createApp(appModule);
+
+    const registration = await app.inject({
+      method: 'POST',
+      url: '/v1/auth/register',
+      payload: {
+        email: 'traveler@example.test',
+        password: 'correct-horse-battery-staple',
+      },
+    });
+
+    expect(registration.statusCode).toBe(201);
+    expect(registration.json()).toEqual({ email: 'traveler@example.test' });
+    expect(registration.headers['set-cookie']).toMatch(/HttpOnly/i);
+    expect(registration.headers['set-cookie']).toMatch(/SameSite=Lax/i);
+
+    const sessionCookie = Array.isArray(registration.headers['set-cookie'])
+      ? registration.headers['set-cookie'][0]
+      : registration.headers['set-cookie'];
+    const profile = await app.inject({
+      method: 'GET',
+      url: '/v1/me',
+      headers: { cookie: sessionCookie },
+    });
+
+    expect(profile.statusCode).toBe(200);
+    expect(profile.json()).toEqual({ email: 'traveler@example.test' });
+  });
 });
 
 function adminHeaders() {
