@@ -102,11 +102,46 @@ export class AuthService {
 
     return user;
   }
+
+  async login(input: unknown): Promise<Registration> {
+    const command = registrationSchema.parse(input);
+    const records = await this.database.db
+      .select()
+      .from(users)
+      .where(eq(users.email, command.email))
+      .limit(1);
+    const user = records[0];
+
+    if (!user || !(await argon2.verify(user.passwordHash, command.password))) {
+      throw new UnauthorizedException('Invalid email or password.');
+    }
+
+    const sessionToken = randomBytes(32).toString('base64url');
+    await this.database.db.insert(sessions).values({
+      userId: user.id,
+      tokenHash: hashSessionToken(sessionToken),
+      expiresAt: new Date(Date.now() + sessionDurationSeconds * 1_000),
+    });
+    return { user: { id: user.id, email: user.email }, sessionToken };
+  }
+
+  async logout(sessionToken: string | undefined): Promise<void> {
+    if (!sessionToken) return;
+    await this.database.db
+      .update(sessions)
+      .set({ revokedAt: new Date() })
+      .where(eq(sessions.tokenHash, hashSessionToken(sessionToken)));
+  }
 }
 
 export function sessionCookie(token: string, secure: boolean): string {
   const secureAttribute = secure ? '; Secure' : '';
   return `turkiye_session=${token}; Max-Age=${sessionDurationSeconds}; Path=/; HttpOnly; SameSite=Lax${secureAttribute}`;
+}
+
+export function expiredSessionCookie(secure: boolean): string {
+  const secureAttribute = secure ? '; Secure' : '';
+  return `turkiye_session=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax${secureAttribute}`;
 }
 
 export function readSessionCookie(

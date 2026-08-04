@@ -468,6 +468,49 @@ describe('admin catalog API', () => {
     expect(profile.statusCode).toBe(200);
     expect(profile.json()).toEqual({ email: 'traveler@example.test' });
   });
+
+  it('logs in with a password and revokes the session on logout', async () => {
+    app = await createApp(appModule);
+    await app.inject({
+      method: 'POST',
+      url: '/v1/auth/register',
+      payload: {
+        email: 'login@example.test',
+        password: 'correct-horse-battery-staple',
+      },
+    });
+
+    const login = await app.inject({
+      method: 'POST',
+      url: '/v1/auth/login',
+      payload: {
+        email: 'login@example.test',
+        password: 'correct-horse-battery-staple',
+      },
+    });
+
+    expect(login.statusCode).toBe(201);
+    const sessionCookie = Array.isArray(login.headers['set-cookie'])
+      ? login.headers['set-cookie'][0]
+      : login.headers['set-cookie'];
+
+    const logout = await app.inject({
+      method: 'POST',
+      url: '/v1/auth/logout',
+      headers: { cookie: sessionCookie },
+    });
+
+    expect(logout.statusCode).toBe(201);
+    expect(logout.headers['set-cookie']).toMatch(/Max-Age=0/i);
+
+    const profile = await app.inject({
+      method: 'GET',
+      url: '/v1/me',
+      headers: { cookie: sessionCookie },
+    });
+
+    expect(profile.statusCode).toBe(401);
+  });
 });
 
 function adminHeaders() {

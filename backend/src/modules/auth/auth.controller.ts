@@ -4,6 +4,7 @@ import type { FastifyReply } from 'fastify';
 import type { AppEnv } from '../../config/env.js';
 import {
   AuthService,
+  expiredSessionCookie,
   readSessionCookie,
   sessionCookie,
 } from './auth.service.js';
@@ -35,5 +36,32 @@ export class AuthController {
   async me(@Headers('cookie') cookie: string | undefined) {
     const user = await this.auth.getCurrentUser(readSessionCookie(cookie));
     return { email: user.email };
+  }
+
+  @Post('auth/login')
+  async login(
+    @Body() body: unknown,
+    @Res({ passthrough: true }) response: FastifyReply,
+  ) {
+    const login = await this.auth.login(body);
+    response.header(
+      'set-cookie',
+      sessionCookie(login.sessionToken, this.secure),
+    );
+    return { email: login.user.email };
+  }
+
+  @Post('auth/logout')
+  async logout(
+    @Headers('cookie') cookie: string | undefined,
+    @Res({ passthrough: true }) response: FastifyReply,
+  ) {
+    await this.auth.logout(readSessionCookie(cookie));
+    response.header('set-cookie', expiredSessionCookie(this.secure));
+    return {};
+  }
+
+  private get secure(): boolean {
+    return this.config.get('NODE_ENV', { infer: true }) === 'production';
   }
 }
