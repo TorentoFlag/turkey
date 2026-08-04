@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { and, asc, eq, ne } from 'drizzle-orm';
+import { and, asc, eq, inArray, ne } from 'drizzle-orm';
 import { z } from 'zod';
 import { DatabaseService } from '../../database/database.service.js';
 import {
@@ -94,6 +94,26 @@ const updateProductSchema = z
   })
   .strict()
   .refine((value) => Object.keys(value).length > 0);
+
+export type PublicCategory = Readonly<{
+  id: string;
+  name: string;
+  slug: string;
+  imageUrl: string | null;
+  children: PublicCategory[];
+}>;
+
+export type PublicProduct = Readonly<{
+  id: string;
+  categoryId: string;
+  title: string;
+  slug: string;
+  description: string;
+  imageUrl: string | null;
+  type: Product['type'];
+  priceMinor: number | null;
+  currency: string | null;
+}>;
 
 @Injectable()
 export class CatalogService {
@@ -213,6 +233,88 @@ export class CatalogService {
       .select()
       .from(products)
       .orderBy(asc(products.sortOrder), asc(products.title));
+  }
+
+  async listPublicCategories(): Promise<PublicCategory[]> {
+    const activeCategories = await this.database.db
+      .select()
+      .from(categories)
+      .where(eq(categories.isActive, true))
+      .orderBy(asc(categories.sortOrder), asc(categories.name));
+    const childrenByParentId = new Map<string, Category[]>();
+
+    for (const category of activeCategories) {
+      if (category.parentId) {
+        const children = childrenByParentId.get(category.parentId) ?? [];
+        children.push(category);
+        childrenByParentId.set(category.parentId, children);
+      }
+    }
+
+    return activeCategories
+      .filter((category) => category.parentId === null)
+      .map((category) => ({
+        id: category.id,
+        name: category.name,
+        slug: category.slug,
+        imageUrl: category.imageUrl,
+        children: (childrenByParentId.get(category.id) ?? []).map((child) => ({
+          id: child.id,
+          name: child.name,
+          slug: child.slug,
+          imageUrl: child.imageUrl,
+          children: [],
+        })),
+      }));
+  }
+
+  async listPublicProducts(categorySlug?: string): Promise<PublicProduct[]> {
+    const categoryIds = categorySlug
+      ? await this.findPublicCategoryFamily(categorySlug)
+      : undefined;
+
+    if (categoryIds && categoryIds.length === 0) {
+      return [];
+    }
+
+    const records = await this.database.db
+      .select({ product: products })
+      .from(products)
+      .innerJoin(categories, eq(products.categoryId, categories.id))
+      .where(
+        categoryIds
+          ? and(
+              eq(products.isActive, true),
+              eq(categories.isActive, true),
+              inArray(products.categoryId, categoryIds),
+            )
+          : and(eq(products.isActive, true), eq(categories.isActive, true)),
+      )
+      .orderBy(asc(products.sortOrder), asc(products.title));
+
+    return records.map(({ product }) => toPublicProduct(product));
+  }
+
+  async getPublicProduct(slug: string): Promise<PublicProduct> {
+    const records = await this.database.db
+      .select({ product: products })
+      .from(products)
+      .innerJoin(categories, eq(products.categoryId, categories.id))
+      .where(
+        and(
+          eq(products.slug, slug),
+          eq(products.isActive, true),
+          eq(categories.isActive, true),
+        ),
+      )
+      .limit(1);
+    const record = records[0];
+
+    if (!record) {
+      throw new NotFoundException('Product was not found.');
+    }
+
+    return toPublicProduct(record.product);
   }
 
   async createProduct(
@@ -344,6 +446,31 @@ export class CatalogService {
     return result[0];
   }
 
+  private async findPublicCategoryFamily(slug: string): Promise<string[]> {
+    const categoriesBySlug = await this.database.db
+      .select()
+      .from(categories)
+      .where(and(eq(categories.slug, slug), eq(categories.isActive, true)))
+      .limit(1);
+    const category = categoriesBySlug[0];
+
+    if (!category) {
+      return [];
+    }
+
+    const children = await this.database.db
+      .select({ id: categories.id })
+      .from(categories)
+      .where(
+        and(
+          eq(categories.parentId, category.id),
+          eq(categories.isActive, true),
+        ),
+      );
+
+    return [category.id, ...children.map((child) => child.id)];
+  }
+
   private async validateCategoryParentChange(
     category: Category,
     parentId: string | null | undefined,
@@ -412,4 +539,18 @@ export class CatalogService {
       throw new ConflictException('Product slug already exists.');
     }
   }
+}
+
+function toPublicProduct(product: Product): PublicProduct {
+  return {
+    id: product.id,
+    categoryId: product.categoryId,
+    title: product.title,
+    slug: product.slug,
+    description: product.description,
+    imageUrl: product.imageUrl,
+    type: product.type,
+    priceMinor: product.priceMinor,
+    currency: product.currency,
+  };
 }

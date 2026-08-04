@@ -347,6 +347,97 @@ describe('admin catalog API', () => {
       },
     ]);
   });
+
+  it('exposes only active catalog records to the public API', async () => {
+    app = await createApp(appModule);
+    const root = await createCategory(app, {
+      name: 'Публичный каталог',
+      slug: 'public-catalog',
+    });
+    const child = await createCategory(app, {
+      name: 'Экскурсии',
+      slug: 'public-excursions',
+      parentId: root.id,
+    });
+    await createCategory(app, {
+      name: 'Скрытая категория',
+      slug: 'hidden-public-category',
+      parentId: root.id,
+      isActive: false,
+    });
+    const rootProduct = await createProduct(app, {
+      categoryId: root.id,
+      title: 'Трансфер из аэропорта',
+      slug: 'public-airport-transfer',
+      description: 'Индивидуальный трансфер.',
+      type: 'auto_delivery',
+      priceMinor: 5_000,
+      currency: 'TRY',
+    });
+    const childProduct = await createProduct(app, {
+      categoryId: child.id,
+      title: 'Экскурсия в Каппадокию',
+      slug: 'public-cappadocia-tour',
+      description: 'Бронирование экскурсии.',
+      type: 'booking',
+    });
+    const hiddenProduct = await createProduct(app, {
+      categoryId: root.id,
+      title: 'Скрытый товар',
+      slug: 'hidden-public-product',
+      description: 'Не должен быть доступен публично.',
+      type: 'physical',
+      priceMinor: 10_000,
+      currency: 'TRY',
+      isActive: false,
+    });
+
+    const categoriesResponse = await app.inject({
+      method: 'GET',
+      url: '/v1/public/categories',
+    });
+
+    expect(categoriesResponse.statusCode).toBe(200);
+    expect(categoriesResponse.json()).toContainEqual(
+      expect.objectContaining({
+        id: root.id,
+        children: [expect.objectContaining({ id: child.id })],
+      }),
+    );
+
+    const productsResponse = await app.inject({
+      method: 'GET',
+      url: '/v1/public/products?categorySlug=public-catalog',
+    });
+
+    expect(productsResponse.statusCode).toBe(200);
+    expect(productsResponse.json()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: rootProduct.id }),
+        expect.objectContaining({ id: childProduct.id }),
+      ]),
+    );
+    expect(productsResponse.json()).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: hiddenProduct.id }),
+      ]),
+    );
+
+    const productResponse = await app.inject({
+      method: 'GET',
+      url: '/v1/public/products/public-cappadocia-tour',
+    });
+
+    expect(productResponse.statusCode).toBe(200);
+    expect(productResponse.json()).toMatchObject({ id: childProduct.id });
+
+    const hiddenProductResponse = await app.inject({
+      method: 'GET',
+      url: '/v1/public/products/hidden-public-product',
+    });
+
+    expect(hiddenProductResponse.statusCode).toBe(404);
+  });
 });
 
 function adminHeaders() {
