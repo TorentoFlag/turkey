@@ -123,4 +123,3 @@
 - [ ] **Step 5: Run a Playwright smoke test** at desktop and mobile widths covering homepage unchanged, all eight catalog sections, one detail page, cart, checkout, and order confirmation.
 - [ ] **Step 6: Inspect `git diff --stat` and verify homepage component files were not changed** beyond approved shared metadata needed by the marketplace.
 - [ ] **Step 7: Commit the final verified implementation** with `git add . && git commit -m "feat: launch source-backed Turkey travel catalog"`.
-

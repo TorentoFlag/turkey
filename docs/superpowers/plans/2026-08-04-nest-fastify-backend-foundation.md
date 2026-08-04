@@ -159,7 +159,7 @@ git check-ignore -q .worktrees
 git worktree add .worktrees/backend-foundation -b feat/backend-foundation
 ~~~
 
-Expected: the baseline has docs/prototype only; no .env, node_modules, generated output or credentials. All remaining tasks execute from .worktrees/backend-foundation. Stop on authentication failure or a conflicting remote branch; never force-push.
+Expected: the baseline has docs/prototype only; no .env, node_modules, generated output or credentials. If diff --cached --check finds pre-existing whitespace in a required historical file, normalize only that whitespace, preserve content, rerun the check and record the path in the task report. All remaining tasks execute from .worktrees/backend-foundation. Stop on authentication failure or a conflicting remote branch; never force-push.
 
 ### Task 2: Scaffold backend package and prove configuration validation via TDD
 
