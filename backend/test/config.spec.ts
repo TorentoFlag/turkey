@@ -17,6 +17,7 @@ describe('parseEnv', () => {
       DATABASE_URL: valid.DATABASE_URL,
       LOG_LEVEL: 'warn',
       ADMIN_API_KEY: valid.ADMIN_API_KEY,
+      ARC_API_BASE_URL: 'https://api.arcpay.space/v1',
     });
   });
 

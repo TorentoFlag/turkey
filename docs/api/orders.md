@@ -51,7 +51,7 @@
 }
 ```
 
-Для оплачиваемых типов этот endpoint создаёт заказ до checkout. Создание Arc Hosted Checkout — отдельный следующий endpoint; `booking` checkout не имеет.
+Для оплачиваемых типов этот endpoint создаёт заказ до checkout. Затем frontend вызывает [`POST /v1/orders/:id/checkout`](payments.md); `booking` checkout не имеет.
 
 ## Личная история
 

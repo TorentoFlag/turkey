@@ -2,13 +2,23 @@ import type { StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import type { Type } from '@nestjs/common';
 import { Pool } from 'pg';
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 import { runMigrations } from '../src/database/migrate.js';
 import { startPostgres } from './support/postgres.js';
 
 describe('admin catalog API', () => {
   const previousEnv = {
     adminApiKey: process.env.ADMIN_API_KEY,
+    arcApiBaseUrl: process.env.ARC_API_BASE_URL,
+    arcSecretApiKey: process.env.ARC_SECRET_API_KEY,
     databaseUrl: process.env.DATABASE_URL,
     logLevel: process.env.LOG_LEVEL,
     nodeEnv: process.env.NODE_ENV,
@@ -28,6 +38,8 @@ describe('admin catalog API', () => {
       .replace(/^postgres:/, 'postgresql:');
     process.env.LOG_LEVEL = 'warn';
     process.env.ADMIN_API_KEY = 'test-static-admin-key';
+    process.env.ARC_API_BASE_URL = 'https://arc.example.test/v1';
+    process.env.ARC_SECRET_API_KEY = 'sk_test_checkout';
     await runMigrations(process.env.DATABASE_URL);
     pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
@@ -37,6 +49,7 @@ describe('admin catalog API', () => {
   afterEach(async () => {
     await app?.close();
     app = undefined;
+    vi.unstubAllGlobals();
   });
 
   afterAll(async () => {
@@ -44,6 +57,8 @@ describe('admin catalog API', () => {
     await postgres?.stop();
 
     restoreEnvironment('ADMIN_API_KEY', previousEnv.adminApiKey);
+    restoreEnvironment('ARC_API_BASE_URL', previousEnv.arcApiBaseUrl);
+    restoreEnvironment('ARC_SECRET_API_KEY', previousEnv.arcSecretApiKey);
     restoreEnvironment('DATABASE_URL', previousEnv.databaseUrl);
     restoreEnvironment('LOG_LEVEL', previousEnv.logLevel);
     restoreEnvironment('NODE_ENV', previousEnv.nodeEnv);
@@ -813,6 +828,99 @@ describe('admin catalog API', () => {
           isProcessed: false,
         }),
       ]),
+    );
+  });
+
+  it('creates one hosted checkout for the owner of a payable order', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        Response.json([
+          {
+            method: 'bank_card',
+            payment_mode: 'redirect',
+            display_name: 'Card',
+            is_active: true,
+            supported_currencies: ['RUB'],
+          },
+        ]),
+      )
+      .mockResolvedValueOnce(
+        Response.json(
+          {
+            id: '018f71c1-4afe-7b1d-9f55-123456789abc',
+            url: 'https://checkout.arc.example.test/session/018f71c1',
+          },
+          { status: 201 },
+        ),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    app = await createApp(appModule);
+    const category = await createCategory(app, {
+      name: 'Оплата через Arc',
+      slug: 'arc-checkout',
+    });
+    const product = await createProduct(app, {
+      categoryId: category.id,
+      title: 'Туристическая eSIM',
+      slug: 'travel-esim-checkout',
+      description: 'Электронная SIM-карта для поездки.',
+      type: 'auto_delivery',
+      priceMinor: 1_990,
+      currency: 'RUB',
+    });
+    const registration = await app.inject({
+      method: 'POST',
+      url: '/v1/auth/register',
+      payload: {
+        email: 'checkout-owner@example.test',
+        password: 'correct-horse-battery-staple',
+      },
+    });
+    const cookie = getSessionCookie(registration);
+    const order = await app.inject({
+      method: 'POST',
+      url: '/v1/orders',
+      headers: { cookie },
+      payload: {
+        productId: product.id,
+        email: 'checkout-owner@example.test',
+        phone: '+905551112233',
+      },
+    });
+    const orderId = order.json<{ id: string }>().id;
+
+    const created = await app.inject({
+      method: 'POST',
+      url: `/v1/orders/${orderId}/checkout`,
+      headers: { cookie },
+    });
+    const repeated = await app.inject({
+      method: 'POST',
+      url: `/v1/orders/${orderId}/checkout`,
+      headers: { cookie },
+    });
+
+    expect(created.statusCode).toBe(201);
+    expect(created.json()).toEqual({
+      checkoutUrl: 'https://checkout.arc.example.test/session/018f71c1',
+    });
+    expect(repeated.statusCode).toBe(201);
+    expect(repeated.json()).toEqual(created.json());
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      'https://arc.example.test/v1/payment-methods/available?environment=sandbox',
+      expect.objectContaining({ method: 'GET' }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      'https://arc.example.test/v1/checkout/sessions',
+      expect.objectContaining({
+        method: 'POST',
+        body: expect.stringContaining('"amount":1990'),
+      }),
     );
   });
 });
