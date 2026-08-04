@@ -149,6 +149,52 @@ describe('admin catalog API', () => {
     expect(thirdLevel.statusCode).toBe(400);
   });
 
+  it('updates and deactivates a category while recording the actor', async () => {
+    app = await createApp(appModule);
+    const category = await createCategory(app, {
+      name: 'Шопинг',
+      slug: 'shopping',
+    });
+
+    const response = await app.inject({
+      method: 'PATCH',
+      url: `/v1/admin/categories/${category.id}`,
+      headers: adminHeaders(),
+      payload: {
+        name: 'Шопинг в Турции',
+        slug: 'turkey-shopping',
+        isActive: false,
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      id: category.id,
+      name: 'Шопинг в Турции',
+      slug: 'turkey-shopping',
+      isActive: false,
+    });
+
+    const audit = await pool.query<{
+      actor_id: string;
+      action: string;
+      entity_type: string;
+      entity_id: string;
+    }>(
+      'select actor_id, action, entity_type, entity_id from audit_log where entity_id = $1 and action = $2',
+      [category.id, 'category.updated'],
+    );
+
+    expect(audit.rows).toEqual([
+      {
+        actor_id: 'manager-42',
+        action: 'category.updated',
+        entity_type: 'category',
+        entity_id: category.id,
+      },
+    ]);
+  });
+
   it('creates booking and payable products with their required payment fields', async () => {
     app = await createApp(appModule);
     const category = await createCategory(app, {
@@ -244,6 +290,63 @@ describe('admin catalog API', () => {
       },
     ]);
   });
+
+  it('updates and deactivates a product while preserving its type rules', async () => {
+    app = await createApp(appModule);
+    const category = await createCategory(app, {
+      name: 'Товары',
+      slug: 'goods',
+    });
+    const product = await createProduct(app, {
+      categoryId: category.id,
+      title: 'Ювелирное украшение',
+      slug: 'jewellery',
+      description: 'Украшение от турецкого производителя.',
+      type: 'physical',
+      priceMinor: 100_000,
+      currency: 'TRY',
+    });
+
+    const response = await app.inject({
+      method: 'PATCH',
+      url: `/v1/admin/products/${product.id}`,
+      headers: adminHeaders(),
+      payload: {
+        title: 'Ювелирное украшение премиум',
+        priceMinor: 125_000,
+        isActive: false,
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      id: product.id,
+      title: 'Ювелирное украшение премиум',
+      priceMinor: 125_000,
+      currency: 'TRY',
+      type: 'physical',
+      isActive: false,
+    });
+
+    const audit = await pool.query<{
+      actor_id: string;
+      action: string;
+      entity_type: string;
+      entity_id: string;
+    }>(
+      'select actor_id, action, entity_type, entity_id from audit_log where entity_id = $1 and action = $2',
+      [product.id, 'product.updated'],
+    );
+
+    expect(audit.rows).toEqual([
+      {
+        actor_id: 'manager-42',
+        action: 'product.updated',
+        entity_type: 'product',
+        entity_id: product.id,
+      },
+    ]);
+  });
 });
 
 function adminHeaders() {
@@ -260,6 +363,21 @@ async function createCategory(
   const response = await app.inject({
     method: 'POST',
     url: '/v1/admin/categories',
+    headers: adminHeaders(),
+    payload,
+  });
+
+  expect(response.statusCode).toBe(201);
+  return response.json<{ id: string }>();
+}
+
+async function createProduct(
+  app: NestFastifyApplication,
+  payload: Record<string, unknown>,
+): Promise<{ id: string }> {
+  const response = await app.inject({
+    method: 'POST',
+    url: '/v1/admin/products',
     headers: adminHeaders(),
     payload,
   });

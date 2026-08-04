@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { asc, eq } from 'drizzle-orm';
+import { and, asc, eq, ne } from 'drizzle-orm';
 import { z } from 'zod';
 import { DatabaseService } from '../../database/database.service.js';
 import {
@@ -28,6 +28,18 @@ const createCategorySchema = z
     isActive: z.boolean().default(true),
   })
   .strict();
+
+const updateCategorySchema = z
+  .object({
+    name: z.string().trim().min(1).max(120).optional(),
+    slug: z.string().min(1).max(160).regex(slugPattern).optional(),
+    parentId: z.uuid().nullable().optional(),
+    imageUrl: z.string().url().nullable().optional(),
+    sortOrder: z.number().int().min(-1_000_000).max(1_000_000).optional(),
+    isActive: z.boolean().optional(),
+  })
+  .strict()
+  .refine((value) => Object.keys(value).length > 0);
 
 const createProductSchema = z
   .object({
@@ -60,6 +72,28 @@ const createProductSchema = z
       });
     }
   });
+
+const updateProductSchema = z
+  .object({
+    categoryId: z.uuid().optional(),
+    title: z.string().trim().min(1).max(200).optional(),
+    slug: z.string().min(1).max(160).regex(slugPattern).optional(),
+    description: z.string().trim().min(1).max(10_000).optional(),
+    imageUrl: z.string().url().nullable().optional(),
+    type: z.enum(['auto_delivery', 'physical', 'booking']).optional(),
+    priceMinor: z.number().int().positive().nullable().optional(),
+    currency: z
+      .string()
+      .trim()
+      .toUpperCase()
+      .regex(/^[A-Z]{3}$/)
+      .nullable()
+      .optional(),
+    sortOrder: z.number().int().min(-1_000_000).max(1_000_000).optional(),
+    isActive: z.boolean().optional(),
+  })
+  .strict()
+  .refine((value) => Object.keys(value).length > 0);
 
 @Injectable()
 export class CatalogService {
@@ -126,6 +160,54 @@ export class CatalogService {
     });
   }
 
+  async updateCategory(
+    id: string,
+    actor: AuthenticatedAdmin,
+    input: unknown,
+  ): Promise<Category> {
+    const parsed = updateCategorySchema.safeParse(input);
+
+    if (!parsed.success) {
+      throw new BadRequestException('Invalid category payload.');
+    }
+
+    const current = await this.findCategory(id);
+
+    if (!current) {
+      throw new NotFoundException('Category was not found.');
+    }
+
+    const changes = parsed.data;
+    await this.validateCategoryParentChange(current, changes.parentId);
+
+    if (changes.slug && changes.slug !== current.slug) {
+      await this.assertCategorySlugAvailable(changes.slug, current.id);
+    }
+
+    return this.database.db.transaction(async (transaction) => {
+      const updated = await transaction
+        .update(categories)
+        .set({ ...changes, updatedAt: new Date() })
+        .where(eq(categories.id, id))
+        .returning();
+      const category = updated[0];
+
+      if (!category) {
+        throw new NotFoundException('Category was not found.');
+      }
+
+      await transaction.insert(auditLog).values({
+        actorId: actor.actorId,
+        action: 'category.updated',
+        entityType: 'category',
+        entityId: category.id,
+        payload: { changedFields: Object.keys(changes) },
+      });
+
+      return category;
+    });
+  }
+
   async listProducts(): Promise<Product[]> {
     return this.database.db
       .select()
@@ -178,6 +260,70 @@ export class CatalogService {
     });
   }
 
+  async updateProduct(
+    id: string,
+    actor: AuthenticatedAdmin,
+    input: unknown,
+  ): Promise<Product> {
+    const parsed = updateProductSchema.safeParse(input);
+
+    if (!parsed.success) {
+      throw new BadRequestException('Invalid product payload.');
+    }
+
+    const current = await this.findProduct(id);
+
+    if (!current) {
+      throw new NotFoundException('Product was not found.');
+    }
+
+    const changes = parsed.data;
+    const type = changes.type ?? current.type;
+    const priceMinor = changes.priceMinor ?? current.priceMinor;
+    const currency = changes.currency ?? current.currency;
+
+    if (type !== 'booking' && (priceMinor == null || currency == null)) {
+      throw new BadRequestException(
+        'Payable products require priceMinor and currency.',
+      );
+    }
+
+    if (changes.categoryId && changes.categoryId !== current.categoryId) {
+      const category = await this.findCategory(changes.categoryId);
+
+      if (!category) {
+        throw new NotFoundException('Product category was not found.');
+      }
+    }
+
+    if (changes.slug && changes.slug !== current.slug) {
+      await this.assertProductSlugAvailable(changes.slug, current.id);
+    }
+
+    return this.database.db.transaction(async (transaction) => {
+      const updated = await transaction
+        .update(products)
+        .set({ ...changes, updatedAt: new Date() })
+        .where(eq(products.id, id))
+        .returning();
+      const product = updated[0];
+
+      if (!product) {
+        throw new NotFoundException('Product was not found.');
+      }
+
+      await transaction.insert(auditLog).values({
+        actorId: actor.actorId,
+        action: 'product.updated',
+        entityType: 'product',
+        entityId: product.id,
+        payload: { changedFields: Object.keys(changes) },
+      });
+
+      return product;
+    });
+  }
+
   private async findCategory(id: string): Promise<Category | undefined> {
     const result = await this.database.db
       .select()
@@ -186,5 +332,84 @@ export class CatalogService {
       .limit(1);
 
     return result[0];
+  }
+
+  private async findProduct(id: string): Promise<Product | undefined> {
+    const result = await this.database.db
+      .select()
+      .from(products)
+      .where(eq(products.id, id))
+      .limit(1);
+
+    return result[0];
+  }
+
+  private async validateCategoryParentChange(
+    category: Category,
+    parentId: string | null | undefined,
+  ): Promise<void> {
+    if (parentId === undefined || parentId === category.parentId) {
+      return;
+    }
+
+    if (parentId === category.id) {
+      throw new BadRequestException('A category cannot be its own parent.');
+    }
+
+    if (parentId !== null) {
+      const parent = await this.findCategory(parentId);
+
+      if (!parent) {
+        throw new NotFoundException('Parent category was not found.');
+      }
+
+      if (parent.parentId !== null) {
+        throw new BadRequestException(
+          'A category can have only one level of subcategories.',
+        );
+      }
+
+      const child = await this.database.db
+        .select({ id: categories.id })
+        .from(categories)
+        .where(eq(categories.parentId, category.id))
+        .limit(1);
+
+      if (child[0]) {
+        throw new BadRequestException(
+          'A category with subcategories cannot become a subcategory.',
+        );
+      }
+    }
+  }
+
+  private async assertCategorySlugAvailable(
+    slug: string,
+    id: string,
+  ): Promise<void> {
+    const existing = await this.database.db
+      .select({ id: categories.id })
+      .from(categories)
+      .where(and(eq(categories.slug, slug), ne(categories.id, id)))
+      .limit(1);
+
+    if (existing[0]) {
+      throw new ConflictException('Category slug already exists.');
+    }
+  }
+
+  private async assertProductSlugAvailable(
+    slug: string,
+    id: string,
+  ): Promise<void> {
+    const existing = await this.database.db
+      .select({ id: products.id })
+      .from(products)
+      .where(and(eq(products.slug, slug), ne(products.id, id)))
+      .limit(1);
+
+    if (existing[0]) {
+      throw new ConflictException('Product slug already exists.');
+    }
   }
 }

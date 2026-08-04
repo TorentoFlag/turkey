@@ -1,4 +1,12 @@
-import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import {
   AdminActor,
   AdminApiKeyGuard,
@@ -22,5 +30,14 @@ export class AdminCatalogController {
     @Body() body: unknown,
   ) {
     return this.catalog.createCategory(actor, body);
+  }
+
+  @Patch(':id')
+  updateCategory(
+    @Param('id') id: string,
+    @AdminActor() actor: AuthenticatedAdmin,
+    @Body() body: unknown,
+  ) {
+    return this.catalog.updateCategory(id, actor, body);
   }
 }
