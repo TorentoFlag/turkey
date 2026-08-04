@@ -113,4 +113,28 @@ export class OutboxRepository {
 
     return delivered.length === 1;
   }
+
+  async scheduleRetry(
+    id: string,
+    claimToken: string,
+    attempts: number,
+  ): Promise<boolean> {
+    const delaySeconds = Math.min(60 * 60, 2 ** Math.min(attempts, 10));
+    const retried = await this.database.db
+      .update(outboxEvents)
+      .set({
+        claimToken: null,
+        nextAttemptAt: new Date(Date.now() + delaySeconds * 1_000),
+      })
+      .where(
+        and(
+          eq(outboxEvents.id, id),
+          eq(outboxEvents.claimToken, claimToken),
+          isNull(outboxEvents.deliveredAt),
+        ),
+      )
+      .returning({ id: outboxEvents.id });
+
+    return retried.length === 1;
+  }
 }

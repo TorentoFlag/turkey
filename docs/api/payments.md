@@ -43,6 +43,9 @@ Server-only переменные:
 ARC_SECRET_API_KEY=<секретный ключ Arc>
 ARC_API_BASE_URL=https://api.arcpay.space/v1
 ARC_WEBHOOK_SECRET=<секрет проверки webhook Arc>
+RESEND_API_KEY=<ключ Resend только с правом отправки>
+RESEND_FROM=<адрес на подтверждённом домене>
+SLACK_WEBHOOK_URL=<секретный webhook рабочего канала>
 ```
 
 `ARC_API_BASE_URL` имеет указанное значение по умолчанию и существует для контролируемого runtime/test-окружения. Секретный ключ не передаётся во frontend и не логируется. Перед созданием session backend запрашивает доступные для этого ключа redirect-методы оплаты и использует только активные варианты для валюты заказа.

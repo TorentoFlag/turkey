@@ -474,6 +474,18 @@ describe('admin catalog API', () => {
     expect(registration.json()).toEqual({ email: 'traveler@example.test' });
     expect(registration.headers['set-cookie']).toMatch(/HttpOnly/i);
     expect(registration.headers['set-cookie']).toMatch(/SameSite=Lax/i);
+    expect(
+      await pool.query(
+        "select type, idempotency_key from outbox_events where type = 'user.registered'",
+      ),
+    ).toMatchObject({
+      rows: [
+        {
+          type: 'user.registered',
+          idempotency_key: expect.stringMatching(/^user\.registered:/),
+        },
+      ],
+    });
 
     const sessionCookie = Array.isArray(registration.headers['set-cookie'])
       ? registration.headers['set-cookie'][0]
@@ -582,6 +594,21 @@ describe('admin catalog API', () => {
       bookingStartDate: '2026-09-10',
       bookingEndDate: '2026-09-12',
       isProcessed: false,
+    });
+    const orderId = response.json<{ id: string }>().id;
+    expect(
+      await pool.query(
+        'select type, aggregate_id, idempotency_key from outbox_events where aggregate_id = $1',
+        [orderId],
+      ),
+    ).toMatchObject({
+      rows: [
+        {
+          type: 'order.accepted',
+          aggregate_id: orderId,
+          idempotency_key: `order.accepted:${orderId}`,
+        },
+      ],
     });
   });
 

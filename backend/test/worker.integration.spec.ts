@@ -9,7 +9,13 @@ import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { DatabaseService } from '../src/database/database.service.js';
 import { runMigrations } from '../src/database/migrate.js';
-import { outboxEvents } from '../src/database/schema/index.js';
+import {
+  categories,
+  orders,
+  outboxEvents,
+  products,
+  users,
+} from '../src/database/schema/index.js';
 import type { OutboxRepository } from '../src/modules/notifications/outbox.repository.js';
 import type { OutboxWorker } from '../src/modules/notifications/outbox.worker.js';
 import { startPostgres } from './support/postgres.js';
@@ -24,6 +30,9 @@ describe('outbox worker foundation', () => {
     logLevel: process.env.LOG_LEVEL,
     nodeEnv: process.env.NODE_ENV,
     port: process.env.PORT,
+    resendApiKey: process.env.RESEND_API_KEY,
+    resendFrom: process.env.RESEND_FROM,
+    slackWebhookUrl: process.env.SLACK_WEBHOOK_URL,
   };
   let app: INestApplicationContext;
   let postgres: StartedPostgreSqlContainer;
@@ -40,6 +49,9 @@ describe('outbox worker foundation', () => {
       .replace(/^postgres:/, 'postgresql:');
     process.env.LOG_LEVEL = 'warn';
     process.env.ADMIN_API_KEY = 'test-static-admin-key';
+    process.env.RESEND_API_KEY = 're_test_key';
+    process.env.RESEND_FROM = 'Turkey <noreply@example.test>';
+    process.env.SLACK_WEBHOOK_URL = 'https://slack.example.test/hooks/orders';
 
     await runMigrations(process.env.DATABASE_URL);
 
@@ -68,6 +80,9 @@ describe('outbox worker foundation', () => {
     restoreEnvironment('LOG_LEVEL', previousEnv.logLevel);
     restoreEnvironment('NODE_ENV', previousEnv.nodeEnv);
     restoreEnvironment('PORT', previousEnv.port);
+    restoreEnvironment('RESEND_API_KEY', previousEnv.resendApiKey);
+    restoreEnvironment('RESEND_FROM', previousEnv.resendFrom);
+    restoreEnvironment('SLACK_WEBHOOK_URL', previousEnv.slackWebhookUrl);
   });
 
   it('ignores a duplicate idempotency key deterministically', async () => {
@@ -225,11 +240,131 @@ describe('outbox worker foundation', () => {
     expect(persisted?.deliveredAt).toBeInstanceOf(Date);
   });
 
-  it('runs once without making a network request or faking delivery', async () => {
+  it('sends a registration email once and marks its event delivered', async () => {
+    const [user] = await database.db
+      .insert(users)
+      .values({
+        email: 'new-user@example.test',
+        passwordHash: 'not-used-by-notification-worker',
+      })
+      .returning();
+    expect(user).toBeDefined();
+    await repository.enqueue({
+      type: 'user.registered',
+      aggregateId: user!.id,
+      idempotencyKey: `user.registered:${user!.id}`,
+      payload: { userId: user!.id },
+    });
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(
+        new Response(JSON.stringify({ id: 'email_123' }), { status: 200 }),
+      );
+
+    try {
+      await expect(worker.runOnce()).resolves.toBe(1);
+
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      expect(fetchSpy).toHaveBeenCalledWith(
+        'https://api.resend.com/emails',
+        expect.objectContaining({
+          method: 'POST',
+          headers: expect.objectContaining({
+            'Idempotency-Key': `user.registered:${user!.id}:email`,
+          }),
+        }),
+      );
+      const [persisted] = await database.db
+        .select({ deliveredAt: outboxEvents.deliveredAt })
+        .from(outboxEvents)
+        .where(eq(outboxEvents.idempotencyKey, `user.registered:${user!.id}`));
+      expect(persisted?.deliveredAt).toBeInstanceOf(Date);
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it('sends email and Slack exactly once for an accepted order', async () => {
+    const [user] = await database.db
+      .insert(users)
+      .values({
+        email: 'booking-owner@example.test',
+        passwordHash: 'not-used-by-notification-worker',
+      })
+      .returning();
+    const [category] = await database.db
+      .insert(categories)
+      .values({ name: 'Бронь', slug: 'worker-booking-category' })
+      .returning();
+    const [product] = await database.db
+      .insert(products)
+      .values({
+        categoryId: category!.id,
+        title: 'Аренда яхты',
+        slug: 'worker-yacht-rental',
+        description: 'Тестовая заявка на аренду яхты.',
+        type: 'booking',
+      })
+      .returning();
+    const [order] = await database.db
+      .insert(orders)
+      .values({
+        userId: user!.id,
+        productId: product!.id,
+        productTitle: product!.title,
+        productType: product!.type,
+        email: 'guest-booking@example.test',
+        phone: '+905551112233',
+        bookingStartDate: '2026-09-10',
+        bookingEndDate: '2026-09-12',
+      })
+      .returning();
     await repository.enqueue({
       type: 'order.accepted',
+      aggregateId: order!.id,
+      idempotencyKey: `order.accepted:${order!.id}`,
+      payload: { orderId: order!.id },
+    });
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response(null, { status: 200 }));
+
+    try {
+      await expect(worker.runOnce()).resolves.toBe(1);
+
+      expect(fetchSpy).toHaveBeenCalledTimes(2);
+      expect(fetchSpy).toHaveBeenNthCalledWith(
+        1,
+        'https://api.resend.com/emails',
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            'Idempotency-Key': `order.accepted:${order!.id}:email`,
+          }),
+        }),
+      );
+      expect(fetchSpy).toHaveBeenNthCalledWith(
+        2,
+        'https://slack.example.test/hooks/orders',
+        expect.objectContaining({
+          method: 'POST',
+          body: expect.stringContaining(order!.id),
+        }),
+      );
+      const [persisted] = await database.db
+        .select({ deliveredAt: outboxEvents.deliveredAt })
+        .from(outboxEvents)
+        .where(eq(outboxEvents.idempotencyKey, `order.accepted:${order!.id}`));
+      expect(persisted?.deliveredAt).toBeInstanceOf(Date);
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it('does not fake delivery when a notification event cannot be handled', async () => {
+    await repository.enqueue({
+      type: 'unsupported.event',
       aggregateId: randomUUID(),
-      idempotencyKey: 'order.accepted:worker-order',
+      idempotencyKey: 'unsupported.event:worker-order',
       payload: { orderId: 'worker-order' },
     });
     const fetchSpy = vi
@@ -237,7 +372,7 @@ describe('outbox worker foundation', () => {
       .mockRejectedValue(new Error('worker attempted a network request'));
 
     try {
-      await worker.runOnce();
+      await expect(worker.runOnce()).resolves.toBe(1);
 
       expect(fetchSpy).not.toHaveBeenCalled();
       const [persisted] = await database.db
@@ -246,10 +381,10 @@ describe('outbox worker foundation', () => {
           deliveredAt: outboxEvents.deliveredAt,
         })
         .from(outboxEvents)
-        .where(eq(outboxEvents.idempotencyKey, 'order.accepted:worker-order'));
-      expect(persisted?.claimToken).toMatch(
-        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
-      );
+        .where(
+          eq(outboxEvents.idempotencyKey, 'unsupported.event:worker-order'),
+        );
+      expect(persisted?.claimToken).toBeNull();
       expect(persisted?.deliveredAt).toBeNull();
     } finally {
       fetchSpy.mockRestore();

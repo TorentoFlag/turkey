@@ -8,7 +8,7 @@ import * as argon2 from 'argon2';
 import { and, eq, gt, isNull } from 'drizzle-orm';
 import { z } from 'zod';
 import { DatabaseService } from '../../database/database.service.js';
-import { sessions, users } from '../../database/schema/index.js';
+import { outboxEvents, sessions, users } from '../../database/schema/index.js';
 
 const registrationSchema = z
   .object({
@@ -60,6 +60,12 @@ export class AuthService {
           userId: createdUser.id,
           tokenHash: hashSessionToken(sessionToken),
           expiresAt,
+        });
+        await transaction.insert(outboxEvents).values({
+          type: 'user.registered',
+          aggregateId: createdUser.id,
+          idempotencyKey: `user.registered:${createdUser.id}`,
+          payload: { userId: createdUser.id },
         });
 
         return createdUser;

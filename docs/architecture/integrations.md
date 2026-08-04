@@ -2,9 +2,9 @@
 
 ## Transactional outbox
 
-Любое бизнес-событие, которое требует уведомления, создаётся в той же PostgreSQL-транзакции, что и его агрегат. Например, webhook подтверждает оплату, меняет payment record и добавляет `order.accepted` в `outbox_events` в одной транзакции. Worker периодически берёт готовые события, блокирует их конкурентно, отправляет и отмечает доставленными. Ошибка планируется на повтор с backoff; событие с исчерпанными попытками становится операционным алертом.
+Любое бизнес-событие, которое требует уведомления, создаётся в той же PostgreSQL-транзакции, что и его агрегат. Регистрация добавляет `user.registered`; создание `booking` и подтверждённая оплата добавляют `order.accepted`. Worker периодически берёт готовые события, блокирует их конкурентно, отправляет и отмечает доставленными. Ошибка освобождает claim и планирует повтор с ограниченным exponential backoff.
 
-Идемпотентный key должен быть стабильным: например `order.accepted:<order-id>`. Он защищает от повторного webhook, перезапуска worker-а и повторной доставки. Email и Slack — эффекты worker-а, не причина отката корректно принятого заказа.
+Идемпотентный key должен быть стабильным: например `order.accepted:<order-id>`. Он защищает от повторного webhook и повторного создания заявки. Email отправляется с производным стабильным ключом Resend `...:email`, поэтому повтор worker-а не рассылает второе письмо в окне дедупликации Resend. Slack получает минимальные операционные данные без контактов и адреса; его incoming webhook не предоставляет ключ дедупликации, поэтому worker сохраняет факт доставки только после ответа Slack и повторяет только недоставленное событие.
 
 Основание: [AWS Transactional Outbox](https://docs.aws.amazon.com/prescriptive-guidance/latest/cloud-design-patterns/transactional-outbox.html).
 
@@ -33,7 +33,7 @@ Backend/worker использует API Resend. Нужны:
 - согласованный sender, например `noreply@<verified-domain>`; reply-to только если задан бизнесом;
 - секрет ключа только в secret store окружения backend/worker.
 
-Письма всего двух типов: registration success и order/booking accepted. Шаблоны версионируются в коде/конфигурации, payload outbox содержит минимальные данные, а отправка имеет idempotency key.
+Письма всего двух типов: registration success и order/booking accepted. Шаблоны версионируются в коде/конфигурации, payload outbox содержит только ID агрегата, а worker читает актуальные данные в закрытом контуре. Отправка Resend использует `Idempotency-Key`.
 
 Источники: [Resend domains](https://resend.com/docs/dashboard/domains/introduction), [Resend API keys](https://resend.com/docs/dashboard/api-keys/introduction).
 

@@ -9,6 +9,7 @@ import { DatabaseService } from '../../database/database.service.js';
 import {
   orders,
   auditLog,
+  outboxEvents,
   type Order,
   type Product,
 } from '../../database/schema/index.js';
@@ -96,28 +97,41 @@ export class OrdersService {
       );
     }
 
-    const inserted = await this.database.db
-      .insert(orders)
-      .values({
-        userId: user.id,
-        productId: product.id,
-        productTitle: product.title,
-        productType: product.type,
-        priceMinor: product.priceMinor,
-        currency: product.currency,
-        email: command.email,
-        phone: command.phone,
-        deliveryAddress:
-          product.type === 'physical' ? command.deliveryAddress : null,
-        bookingStartDate: booking ? command.bookingStartDate : null,
-        bookingEndDate: booking ? command.bookingEndDate : null,
-      })
-      .returning();
-    const order = inserted[0];
+    const order = await this.database.db.transaction(async (transaction) => {
+      const inserted = await transaction
+        .insert(orders)
+        .values({
+          userId: user.id,
+          productId: product.id,
+          productTitle: product.title,
+          productType: product.type,
+          priceMinor: product.priceMinor,
+          currency: product.currency,
+          email: command.email,
+          phone: command.phone,
+          deliveryAddress:
+            product.type === 'physical' ? command.deliveryAddress : null,
+          bookingStartDate: booking ? command.bookingStartDate : null,
+          bookingEndDate: booking ? command.bookingEndDate : null,
+        })
+        .returning();
+      const created = inserted[0];
 
-    if (!order) {
-      throw new Error('Order insertion failed.');
-    }
+      if (!created) {
+        throw new Error('Order insertion failed.');
+      }
+
+      if (booking) {
+        await transaction.insert(outboxEvents).values({
+          type: 'order.accepted',
+          aggregateId: created.id,
+          idempotencyKey: `order.accepted:${created.id}`,
+          payload: { orderId: created.id },
+        });
+      }
+
+      return created;
+    });
 
     return toOrderResponse(order);
   }
