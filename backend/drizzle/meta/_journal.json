@@ -29,6 +29,13 @@
       "when": 1785867714263,
       "tag": "0003_fluffy_chat",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1785868326499,
+      "tag": "0004_heavy_veda",
+      "breakpoints": true
     }
   ]
 }

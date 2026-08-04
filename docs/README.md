@@ -7,6 +7,7 @@
 | [product/business-rules.md](product/business-rules.md) | Утверждённые правила каталога, регистрации, заказов, платежей и возвратов. |
 | [architecture/overview.md](architecture/overview.md) | Целевая модульная архитектура, домены, данные и API. |
 | [architecture/integrations.md](architecture/integrations.md) | Контракты Arc Pay, Resend, Slack и outbox. |
+| [api/orders.md](api/orders.md) | Контракт пользовательского создания заказа и личной истории. |
 | [superpowers/specs/2026-08-04-nest-fastify-backend-foundation-design.md](superpowers/specs/2026-08-04-nest-fastify-backend-foundation-design.md) | Утверждённый стек и граница первого backend-среза. |
 | [development/agent-pipeline.md](development/agent-pipeline.md) | Роли, передача задач и порядок агентской разработки. |
 | [development/quality-gates.md](development/quality-gates.md) | Обязательная проверка и условия приёмки. |

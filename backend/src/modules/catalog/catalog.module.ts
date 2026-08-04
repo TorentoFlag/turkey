@@ -14,5 +14,6 @@ import { PublicCatalogController } from './public-catalog.controller.js';
     PublicCatalogController,
   ],
   providers: [CatalogService],
+  exports: [CatalogService],
 })
 export class CatalogModule {}

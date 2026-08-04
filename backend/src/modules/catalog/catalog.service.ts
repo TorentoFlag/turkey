@@ -317,6 +317,28 @@ export class CatalogService {
     return toPublicProduct(record.product);
   }
 
+  async getActiveProductForOrder(productId: string): Promise<Product> {
+    const records = await this.database.db
+      .select({ product: products })
+      .from(products)
+      .innerJoin(categories, eq(products.categoryId, categories.id))
+      .where(
+        and(
+          eq(products.id, productId),
+          eq(products.isActive, true),
+          eq(categories.isActive, true),
+        ),
+      )
+      .limit(1);
+    const record = records[0];
+
+    if (!record) {
+      throw new NotFoundException('Product was not found.');
+    }
+
+    return record.product;
+  }
+
   async createProduct(
     actor: AuthenticatedAdmin,
     input: unknown,

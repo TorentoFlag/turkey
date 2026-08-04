@@ -511,6 +511,187 @@ describe('admin catalog API', () => {
 
     expect(profile.statusCode).toBe(401);
   });
+
+  it('creates a booking request from an active product for the authenticated user', async () => {
+    app = await createApp(appModule);
+    const category = await createCategory(app, {
+      name: 'Аренда транспорта',
+      slug: 'transport-rental',
+    });
+    const product = await createProduct(app, {
+      categoryId: category.id,
+      title: 'Аренда яхты в Анталье',
+      slug: 'antalya-yacht-rental',
+      description: 'Индивидуальная заявка на аренду яхты.',
+      type: 'booking',
+    });
+    const registration = await app.inject({
+      method: 'POST',
+      url: '/v1/auth/register',
+      payload: {
+        email: 'booking@example.test',
+        password: 'correct-horse-battery-staple',
+      },
+    });
+    const sessionCookie = getSessionCookie(registration);
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v1/orders',
+      headers: { cookie: sessionCookie },
+      payload: {
+        productId: product.id,
+        email: 'guest@example.test',
+        phone: '+905551112233',
+        bookingStartDate: '2026-09-10',
+        bookingEndDate: '2026-09-12',
+      },
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(response.json()).toMatchObject({
+      product: {
+        id: product.id,
+        title: 'Аренда яхты в Анталье',
+        type: 'booking',
+        priceMinor: null,
+        currency: null,
+      },
+      email: 'guest@example.test',
+      phone: '+905551112233',
+      deliveryAddress: null,
+      bookingStartDate: '2026-09-10',
+      bookingEndDate: '2026-09-12',
+      isProcessed: false,
+    });
+  });
+
+  it('creates a physical-product order with its server-side price snapshot', async () => {
+    app = await createApp(appModule);
+    const category = await createCategory(app, {
+      name: 'Шопинг',
+      slug: 'shopping-orders',
+    });
+    const product = await createProduct(app, {
+      categoryId: category.id,
+      title: 'Ювелирное украшение',
+      slug: 'jewellery-order',
+      description: 'Украшение от турецкого производителя.',
+      type: 'physical',
+      priceMinor: 125_000,
+      currency: 'TRY',
+    });
+    const registration = await app.inject({
+      method: 'POST',
+      url: '/v1/auth/register',
+      payload: {
+        email: 'physical-order@example.test',
+        password: 'correct-horse-battery-staple',
+      },
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v1/orders',
+      headers: { cookie: getSessionCookie(registration) },
+      payload: {
+        productId: product.id,
+        email: 'delivery@example.test',
+        phone: '+905551112233',
+        deliveryAddress: 'Antalya, Konyaalti, Ataturk Blv. 10',
+      },
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(response.json()).toMatchObject({
+      product: {
+        id: product.id,
+        title: 'Ювелирное украшение',
+        type: 'physical',
+        priceMinor: 125_000,
+        currency: 'TRY',
+      },
+      email: 'delivery@example.test',
+      phone: '+905551112233',
+      deliveryAddress: 'Antalya, Konyaalti, Ataturk Blv. 10',
+      bookingStartDate: null,
+      bookingEndDate: null,
+      isProcessed: false,
+    });
+  });
+
+  it('returns only the authenticated users order history', async () => {
+    app = await createApp(appModule);
+    const category = await createCategory(app, {
+      name: 'История заказов',
+      slug: 'order-history',
+    });
+    const product = await createProduct(app, {
+      categoryId: category.id,
+      title: 'Экскурсия на яхте',
+      slug: 'history-yacht-trip',
+      description: 'Заявка на морскую экскурсию.',
+      type: 'booking',
+    });
+    const firstRegistration = await app.inject({
+      method: 'POST',
+      url: '/v1/auth/register',
+      payload: {
+        email: 'history-owner@example.test',
+        password: 'correct-horse-battery-staple',
+      },
+    });
+    const ownerCookie = getSessionCookie(firstRegistration);
+
+    await app.inject({
+      method: 'POST',
+      url: '/v1/orders',
+      headers: { cookie: ownerCookie },
+      payload: {
+        productId: product.id,
+        email: 'history-owner@example.test',
+        phone: '+905551112233',
+        bookingStartDate: '2026-10-01',
+        bookingEndDate: '2026-10-02',
+      },
+    });
+
+    const secondRegistration = await app.inject({
+      method: 'POST',
+      url: '/v1/auth/register',
+      payload: {
+        email: 'another-traveler@example.test',
+        password: 'correct-horse-battery-staple',
+      },
+    });
+    await app.inject({
+      method: 'POST',
+      url: '/v1/orders',
+      headers: { cookie: getSessionCookie(secondRegistration) },
+      payload: {
+        productId: product.id,
+        email: 'another-traveler@example.test',
+        phone: '+905554445566',
+        bookingStartDate: '2026-10-03',
+        bookingEndDate: '2026-10-04',
+      },
+    });
+
+    const history = await app.inject({
+      method: 'GET',
+      url: '/v1/me/orders',
+      headers: { cookie: ownerCookie },
+    });
+
+    expect(history.statusCode).toBe(200);
+    expect(history.json()).toEqual([
+      expect.objectContaining({
+        product: expect.objectContaining({ id: product.id }),
+        email: 'history-owner@example.test',
+        isProcessed: false,
+      }),
+    ]);
+  });
 });
 
 function adminHeaders() {
@@ -518,6 +699,20 @@ function adminHeaders() {
     'x-admin-api-key': 'test-static-admin-key',
     'x-admin-actor-id': 'manager-42',
   };
+}
+
+function getSessionCookie(response: {
+  headers: Record<string, string | string[] | number | undefined>;
+}): string {
+  const sessionCookie = Array.isArray(response.headers['set-cookie'])
+    ? response.headers['set-cookie'][0]
+    : response.headers['set-cookie'];
+
+  if (typeof sessionCookie !== 'string') {
+    throw new Error('Expected a session cookie.');
+  }
+
+  return sessionCookie;
 }
 
 async function createCategory(
