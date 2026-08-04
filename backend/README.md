@@ -18,6 +18,11 @@ The development PostgreSQL instance is published only on
 `.env.example` contains local development credentials only. Do not put provider
 credentials or production values in `.env`.
 
+`ADMIN_API_KEY` is a required server secret for the external admin. Generate a
+long random value for each environment; the admin sends it only as
+`X-Admin-Api-Key`. The API also requires `X-Admin-Actor-Id` on every protected
+admin request for audit attribution. There is no JWT or Bearer-token contract.
+
 ## Run the API locally
 
 From the repository root, run:

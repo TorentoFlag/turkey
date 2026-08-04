@@ -11,6 +11,7 @@ import { startPostgres } from './support/postgres.js';
 describe('GET /health', () => {
   const previousEnv = {
     databaseUrl: process.env.DATABASE_URL,
+    adminApiKey: process.env.ADMIN_API_KEY,
     logLevel: process.env.LOG_LEVEL,
     nodeEnv: process.env.NODE_ENV,
     port: process.env.PORT,
@@ -27,6 +28,7 @@ describe('GET /health', () => {
       .getConnectionUri()
       .replace(/^postgres:/, 'postgresql:');
     process.env.LOG_LEVEL = 'warn';
+    process.env.ADMIN_API_KEY = 'test-static-admin-key';
 
     ({ AppModule: appModule } = await import('../src/app.module.js'));
   });
@@ -40,6 +42,7 @@ describe('GET /health', () => {
     await postgres?.stop();
 
     restoreEnvironment('DATABASE_URL', previousEnv.databaseUrl);
+    restoreEnvironment('ADMIN_API_KEY', previousEnv.adminApiKey);
     restoreEnvironment('LOG_LEVEL', previousEnv.logLevel);
     restoreEnvironment('NODE_ENV', previousEnv.nodeEnv);
     restoreEnvironment('PORT', previousEnv.port);

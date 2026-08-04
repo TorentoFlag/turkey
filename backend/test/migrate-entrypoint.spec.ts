@@ -41,6 +41,7 @@ describe('db:migrate entrypoint', () => {
             DATABASE_URL:
               'postgresql://turkiye:turkiye@127.0.0.1:1/turkiye_test',
             LOG_LEVEL: 'warn',
+            ADMIN_API_KEY: 'test-static-admin-key',
             PATH: process.env.PATH ?? '',
           },
         }),

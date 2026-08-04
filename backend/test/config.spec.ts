@@ -6,6 +6,7 @@ const valid = {
   PORT: '3001',
   DATABASE_URL: 'postgresql://user:password@127.0.0.1:5432/turkiye_test',
   LOG_LEVEL: 'warn',
+  ADMIN_API_KEY: 'test-static-admin-key',
 };
 
 describe('parseEnv', () => {
@@ -15,6 +16,7 @@ describe('parseEnv', () => {
       PORT: 3001,
       DATABASE_URL: valid.DATABASE_URL,
       LOG_LEVEL: 'warn',
+      ADMIN_API_KEY: valid.ADMIN_API_KEY,
     });
   });
 
@@ -23,6 +25,8 @@ describe('parseEnv', () => {
     { ...valid, DATABASE_URL: 'not-a-url' },
     { ...valid, PORT: '0' },
     { ...valid, NODE_ENV: 'preview' },
+    { ...valid, ADMIN_API_KEY: undefined },
+    { ...valid, ADMIN_API_KEY: '   ' },
   ])('rejects invalid server configuration', (input) => {
     expect(() => parseEnv(input)).toThrow(/configuration/i);
   });

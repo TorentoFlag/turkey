@@ -20,6 +20,7 @@ const backendDirectory = fileURLToPath(new URL('..', import.meta.url));
 describe('outbox worker foundation', () => {
   const previousEnv = {
     databaseUrl: process.env.DATABASE_URL,
+    adminApiKey: process.env.ADMIN_API_KEY,
     logLevel: process.env.LOG_LEVEL,
     nodeEnv: process.env.NODE_ENV,
     port: process.env.PORT,
@@ -38,6 +39,7 @@ describe('outbox worker foundation', () => {
       .getConnectionUri()
       .replace(/^postgres:/, 'postgresql:');
     process.env.LOG_LEVEL = 'warn';
+    process.env.ADMIN_API_KEY = 'test-static-admin-key';
 
     await runMigrations(process.env.DATABASE_URL);
 
@@ -62,6 +64,7 @@ describe('outbox worker foundation', () => {
     await postgres?.stop();
 
     restoreEnvironment('DATABASE_URL', previousEnv.databaseUrl);
+    restoreEnvironment('ADMIN_API_KEY', previousEnv.adminApiKey);
     restoreEnvironment('LOG_LEVEL', previousEnv.logLevel);
     restoreEnvironment('NODE_ENV', previousEnv.nodeEnv);
     restoreEnvironment('PORT', previousEnv.port);

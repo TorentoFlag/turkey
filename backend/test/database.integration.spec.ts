@@ -35,4 +35,16 @@ describe('database migrations', () => {
 
     expect(result.rows).toHaveLength(1);
   });
+
+  it('creates catalog and audit tables on a clean PostgreSQL database', async () => {
+    const result = await pool.query<{ table_name: string }>(
+      "select table_name from information_schema.tables where table_schema = 'public' and table_name in ('categories', 'products', 'audit_log') order by table_name",
+    );
+
+    expect(result.rows).toEqual([
+      { table_name: 'audit_log' },
+      { table_name: 'categories' },
+      { table_name: 'products' },
+    ]);
+  });
 });
