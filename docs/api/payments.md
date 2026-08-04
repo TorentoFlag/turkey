@@ -20,6 +20,21 @@ Frontend сразу перенаправляет пользователя на �
 
 Создание checkout не означает успешную оплату. Успех будет фиксировать только проверенный webhook Arc; return URL покупателя служит лишь для UX.
 
+## Webhook Arc
+
+`POST /v1/webhooks/arc` — служебный endpoint только для Arc. Frontend его не
+вызывает и не может сообщить backend об успешной оплате.
+
+До разбора JSON backend проверяет исходные байты запроса по правилам Arc:
+`Webhook-Id`, `Webhook-Timestamp` и HMAC `Webhook-Signature`; timestamp
+принимается в окне пяти минут. Невалидный запрос отклоняется. `Webhook-Id`
+сохраняется транзакционно, поэтому повторная доставка не меняет payment и не
+создаёт повторное уведомление.
+
+Событие `payment.captured` переводит технический payment record в `succeeded`
+и в той же транзакции создаёт одно outbox-событие `order.accepted`. В дальнейшем
+worker доставит по нему письмо «заявка принята в работу» и сообщение в Slack.
+
 ## Конфигурация Arc
 
 Server-only переменные:
@@ -27,6 +42,7 @@ Server-only переменные:
 ```text
 ARC_SECRET_API_KEY=<секретный ключ Arc>
 ARC_API_BASE_URL=https://api.arcpay.space/v1
+ARC_WEBHOOK_SECRET=<секрет проверки webhook Arc>
 ```
 
 `ARC_API_BASE_URL` имеет указанное значение по умолчанию и существует для контролируемого runtime/test-окружения. Секретный ключ не передаётся во frontend и не логируется. Перед созданием session backend запрашивает доступные для этого ключа redirect-методы оплаты и использует только активные варианты для валюты заказа.

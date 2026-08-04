@@ -19,6 +19,7 @@ const envSchema = z.object({
   ADMIN_API_KEY: z.string().trim().min(1),
   ARC_API_BASE_URL: z.string().url().default('https://api.arcpay.space/v1'),
   ARC_SECRET_API_KEY: z.string().trim().min(1).optional(),
+  ARC_WEBHOOK_SECRET: z.string().trim().min(1).optional(),
 });
 
 export type AppEnv = Readonly<z.output<typeof envSchema>>;

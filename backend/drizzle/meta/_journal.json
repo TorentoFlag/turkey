@@ -43,6 +43,13 @@
       "when": 1785868991315,
       "tag": "0005_thick_enchantress",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1785869368957,
+      "tag": "0006_chief_archangel",
+      "breakpoints": true
     }
   ]
 }

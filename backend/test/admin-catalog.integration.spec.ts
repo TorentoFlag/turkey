@@ -1,6 +1,7 @@
 import type { StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import type { Type } from '@nestjs/common';
+import { createHmac } from 'node:crypto';
 import { Pool } from 'pg';
 import {
   afterAll,
@@ -19,6 +20,7 @@ describe('admin catalog API', () => {
     adminApiKey: process.env.ADMIN_API_KEY,
     arcApiBaseUrl: process.env.ARC_API_BASE_URL,
     arcSecretApiKey: process.env.ARC_SECRET_API_KEY,
+    arcWebhookSecret: process.env.ARC_WEBHOOK_SECRET,
     databaseUrl: process.env.DATABASE_URL,
     logLevel: process.env.LOG_LEVEL,
     nodeEnv: process.env.NODE_ENV,
@@ -40,6 +42,7 @@ describe('admin catalog API', () => {
     process.env.ADMIN_API_KEY = 'test-static-admin-key';
     process.env.ARC_API_BASE_URL = 'https://arc.example.test/v1';
     process.env.ARC_SECRET_API_KEY = 'sk_test_checkout';
+    process.env.ARC_WEBHOOK_SECRET = 'test-webhook-secret';
     await runMigrations(process.env.DATABASE_URL);
     pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
@@ -59,6 +62,7 @@ describe('admin catalog API', () => {
     restoreEnvironment('ADMIN_API_KEY', previousEnv.adminApiKey);
     restoreEnvironment('ARC_API_BASE_URL', previousEnv.arcApiBaseUrl);
     restoreEnvironment('ARC_SECRET_API_KEY', previousEnv.arcSecretApiKey);
+    restoreEnvironment('ARC_WEBHOOK_SECRET', previousEnv.arcWebhookSecret);
     restoreEnvironment('DATABASE_URL', previousEnv.databaseUrl);
     restoreEnvironment('LOG_LEVEL', previousEnv.logLevel);
     restoreEnvironment('NODE_ENV', previousEnv.nodeEnv);
@@ -922,6 +926,156 @@ describe('admin catalog API', () => {
         body: expect.stringContaining('"amount":1990'),
       }),
     );
+  });
+
+  it('accepts a signed capture webhook once and creates the order notification event', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        Response.json([
+          {
+            method: 'bank_card',
+            payment_mode: 'redirect',
+            display_name: 'Card',
+            is_active: true,
+            supported_currencies: ['RUB'],
+          },
+        ]),
+      )
+      .mockResolvedValueOnce(
+        Response.json(
+          {
+            id: '018f71c1-4afe-7b1d-9f55-123456789abd',
+            url: 'https://checkout.arc.example.test/session/018f71c2',
+          },
+          { status: 201 },
+        ),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    app = await createApp(appModule);
+    const category = await createCategory(app, {
+      name: 'Webhook оплаты',
+      slug: 'payment-webhook',
+    });
+    const product = await createProduct(app, {
+      categoryId: category.id,
+      title: 'Туристическая SIM-карта',
+      slug: 'travel-sim-webhook',
+      description: 'SIM-карта с доставкой на email.',
+      type: 'auto_delivery',
+      priceMinor: 1_990,
+      currency: 'RUB',
+    });
+    const registration = await app.inject({
+      method: 'POST',
+      url: '/v1/auth/register',
+      payload: {
+        email: 'webhook-owner@example.test',
+        password: 'correct-horse-battery-staple',
+      },
+    });
+    const cookie = getSessionCookie(registration);
+    const order = await app.inject({
+      method: 'POST',
+      url: '/v1/orders',
+      headers: { cookie },
+      payload: {
+        productId: product.id,
+        email: 'webhook-owner@example.test',
+        phone: '+905551112233',
+      },
+    });
+    const orderId = order.json<{ id: string }>().id;
+    await app.inject({
+      method: 'POST',
+      url: `/v1/orders/${orderId}/checkout`,
+      headers: { cookie },
+    });
+    const payment = await pool.query<{ id: string }>(
+      'select id from payments where order_id = $1',
+      [orderId],
+    );
+    const paymentId = payment.rows[0]?.id;
+
+    if (!paymentId) {
+      throw new Error('Expected checkout payment record.');
+    }
+
+    const eventId = '018f71c1-4afe-7b1d-9f55-123456789abe';
+    const timestamp = String(Math.floor(Date.now() / 1_000));
+    const body = JSON.stringify({
+      event_type: 'payment.captured',
+      data: {
+        id: '018f71c1-4afe-7b1d-9f55-123456789abf',
+        metadata: { payment_id: paymentId },
+      },
+    });
+    const signature = createHmac('sha256', 'test-webhook-secret')
+      .update(`${eventId}.${timestamp}.${body}`)
+      .digest('hex');
+    const headers = {
+      'content-type': 'application/json',
+      'webhook-id': eventId,
+      'webhook-signature': `t=${timestamp},v1=${signature}`,
+      'webhook-timestamp': timestamp,
+    };
+
+    const captured = await app.inject({
+      method: 'POST',
+      url: '/v1/webhooks/arc',
+      headers,
+      payload: body,
+    });
+    const repeated = await app.inject({
+      method: 'POST',
+      url: '/v1/webhooks/arc',
+      headers,
+      payload: body,
+    });
+
+    expect(captured.statusCode).toBe(204);
+    expect(repeated.statusCode).toBe(204);
+    expect(
+      await pool.query(
+        'select state, provider_payment_id from payments where id = $1',
+        [paymentId],
+      ),
+    ).toMatchObject({
+      rows: [
+        {
+          state: 'succeeded',
+          provider_payment_id: '018f71c1-4afe-7b1d-9f55-123456789abf',
+        },
+      ],
+    });
+    expect(
+      await pool.query(
+        'select type, aggregate_id, idempotency_key from outbox_events where aggregate_id = $1',
+        [orderId],
+      ),
+    ).toMatchObject({
+      rows: [
+        {
+          type: 'order.accepted',
+          aggregate_id: orderId,
+          idempotency_key: `order.accepted:${orderId}`,
+        },
+      ],
+    });
+  });
+
+  it('rejects an Arc webhook before parsing an unsigned body', async () => {
+    app = await createApp(appModule);
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v1/webhooks/arc',
+      headers: { 'content-type': 'application/json' },
+      payload: '{not-json',
+    });
+
+    expect(response.statusCode).toBe(401);
   });
 });
 
