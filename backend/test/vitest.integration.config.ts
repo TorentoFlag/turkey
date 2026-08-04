@@ -44,7 +44,7 @@ function configureBrokenLocalDesktopStoreFallback(): void {
   }
 
   const credential = spawnSync('docker-credential-desktop', ['get'], {
-    input: 'registry-1.docker.io\n',
+    input: 'https://index.docker.io/v1/\n',
     stdio: ['pipe', 'ignore', 'ignore'],
   });
 

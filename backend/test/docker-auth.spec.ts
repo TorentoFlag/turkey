@@ -63,7 +63,15 @@ function inspectConfiguredAuth(fixture: DockerConfigFixture): string {
       const helperPath = join(binaryDirectory, 'docker-credential-desktop');
       writeFileSync(
         helperPath,
-        '#!/bin/sh\nprintf \'%s\' \'{"ServerURL":"registry-1.docker.io","Username":"test","Secret":"test"}\'\n',
+        [
+          '#!/bin/sh',
+          'read -r registry',
+          'if [ "$registry" != "https://index.docker.io/v1/" ]; then',
+          '  exit 1',
+          'fi',
+          'printf \'%s\' \'{"ServerURL":"https://index.docker.io/v1/","Username":"test","Secret":"test"}\'',
+          '',
+        ].join('\n'),
       );
       chmodSync(helperPath, 0o700);
     }
