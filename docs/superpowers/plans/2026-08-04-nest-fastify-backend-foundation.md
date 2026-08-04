@@ -273,6 +273,7 @@ git commit -m "feat(backend): add validated Nest configuration"
 - Create: backend/src/database/database.module.ts, backend/src/database/database.service.ts, backend/src/database/migrate.ts
 - Create: backend/drizzle/0000_initial_outbox.sql, backend/drizzle/meta/_journal.json
 - Create: backend/test/support/postgres.ts, backend/test/database.integration.spec.ts, backend/test/vitest.integration.config.ts
+- Modify: backend/test/vitest.unit.config.ts to exclude **/*.integration.spec.ts from the unit suite
 - Test: backend/test/database.integration.spec.ts
 
 **Consumes:** AppEnv and config module.
@@ -291,6 +292,8 @@ expect(result.rows).toHaveLength(1);
 ~~~
 
 Run npm run test:integration. Expected: RED because migration/database code is absent. The test must not read the local 5433 connection string.
+
+The unit Vitest project must exclude **/*.integration.spec.ts, so npm test remains a no-Docker unit suite and npm run test:integration is the only command that starts Testcontainers.
 
 - [ ] **Step 2: Define minimal outbox data and generate reviewed SQL**
 
