@@ -692,6 +692,129 @@ describe('admin catalog API', () => {
       }),
     ]);
   });
+
+  it('marks an order processed through the admin API and records the actor', async () => {
+    app = await createApp(appModule);
+    const category = await createCategory(app, {
+      name: 'Обработка заявок',
+      slug: 'order-processing',
+    });
+    const product = await createProduct(app, {
+      categoryId: category.id,
+      title: 'Аренда вертолета',
+      slug: 'helicopter-rental',
+      description: 'Индивидуальная заявка на аренду вертолета.',
+      type: 'booking',
+    });
+    const registration = await app.inject({
+      method: 'POST',
+      url: '/v1/auth/register',
+      payload: {
+        email: 'process-order@example.test',
+        password: 'correct-horse-battery-staple',
+      },
+    });
+    const order = await app.inject({
+      method: 'POST',
+      url: '/v1/orders',
+      headers: { cookie: getSessionCookie(registration) },
+      payload: {
+        productId: product.id,
+        email: 'process-order@example.test',
+        phone: '+905551112233',
+        bookingStartDate: '2026-11-01',
+        bookingEndDate: '2026-11-02',
+      },
+    });
+    const orderId = order.json<{ id: string }>().id;
+
+    const response = await app.inject({
+      method: 'PATCH',
+      url: `/v1/admin/orders/${orderId}`,
+      headers: adminHeaders(),
+      payload: { isProcessed: true },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      id: orderId,
+      isProcessed: true,
+    });
+
+    const audit = await pool.query<{
+      actor_id: string;
+      action: string;
+      entity_type: string;
+      entity_id: string;
+    }>(
+      'select actor_id, action, entity_type, entity_id from audit_log where entity_id = $1 and action = $2',
+      [orderId, 'order.processed'],
+    );
+
+    expect(audit.rows).toEqual([
+      {
+        actor_id: 'manager-42',
+        action: 'order.processed',
+        entity_type: 'order',
+        entity_id: orderId,
+      },
+    ]);
+  });
+
+  it('lists orders with the contact data needed by the external admin', async () => {
+    app = await createApp(appModule);
+    const category = await createCategory(app, {
+      name: 'Админские заявки',
+      slug: 'admin-order-list',
+    });
+    const product = await createProduct(app, {
+      categoryId: category.id,
+      title: 'Трансфер из аэропорта',
+      slug: 'airport-transfer-admin-list',
+      description: 'Трансфер в отель.',
+      type: 'auto_delivery',
+      priceMinor: 5_000,
+      currency: 'TRY',
+    });
+    const registration = await app.inject({
+      method: 'POST',
+      url: '/v1/auth/register',
+      payload: {
+        email: 'admin-list@example.test',
+        password: 'correct-horse-battery-staple',
+      },
+    });
+    const order = await app.inject({
+      method: 'POST',
+      url: '/v1/orders',
+      headers: { cookie: getSessionCookie(registration) },
+      payload: {
+        productId: product.id,
+        email: 'contact@example.test',
+        phone: '+905551112233',
+      },
+    });
+    const orderId = order.json<{ id: string }>().id;
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/v1/admin/orders',
+      headers: adminHeaders(),
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: orderId,
+          email: 'contact@example.test',
+          phone: '+905551112233',
+          productTitle: 'Трансфер из аэропорта',
+          isProcessed: false,
+        }),
+      ]),
+    );
+  });
 });
 
 function adminHeaders() {

@@ -1,13 +1,19 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { desc, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { DatabaseService } from '../../database/database.service.js';
 import {
   orders,
+  auditLog,
   type Order,
   type Product,
 } from '../../database/schema/index.js';
 import type { AuthenticatedUser } from '../auth/auth.service.js';
+import type { AuthenticatedAdmin } from '../admin-api/admin-api-auth.js';
 import { CatalogService } from '../catalog/catalog.service.js';
 
 const createOrderSchema = z
@@ -19,6 +25,10 @@ const createOrderSchema = z
     bookingStartDate: z.iso.date().optional(),
     bookingEndDate: z.iso.date().optional(),
   })
+  .strict();
+
+const updateOrderProcessingSchema = z
+  .object({ isProcessed: z.boolean() })
   .strict();
 
 export type OrderResponse = Readonly<{
@@ -120,6 +130,65 @@ export class OrdersService {
       .orderBy(desc(orders.createdAt), desc(orders.id));
 
     return records.map(toOrderResponse);
+  }
+
+  async listForAdmin(): Promise<Order[]> {
+    return this.database.db
+      .select()
+      .from(orders)
+      .orderBy(desc(orders.createdAt), desc(orders.id));
+  }
+
+  async updateProcessing(
+    id: string,
+    actor: AuthenticatedAdmin,
+    input: unknown,
+  ): Promise<Order> {
+    const parsed = updateOrderProcessingSchema.safeParse(input);
+
+    if (!parsed.success) {
+      throw new BadRequestException('Invalid order payload.');
+    }
+
+    return this.database.db.transaction(async (transaction) => {
+      const records = await transaction
+        .select()
+        .from(orders)
+        .where(eq(orders.id, id))
+        .limit(1);
+      const current = records[0];
+
+      if (!current) {
+        throw new NotFoundException('Order was not found.');
+      }
+
+      if (current.isProcessed === parsed.data.isProcessed) {
+        return current;
+      }
+
+      const updated = await transaction
+        .update(orders)
+        .set({ isProcessed: parsed.data.isProcessed })
+        .where(eq(orders.id, id))
+        .returning();
+      const order = updated[0];
+
+      if (!order) {
+        throw new NotFoundException('Order was not found.');
+      }
+
+      await transaction.insert(auditLog).values({
+        actorId: actor.actorId,
+        action: 'order.processed',
+        entityType: 'order',
+        entityId: order.id,
+        payload: {
+          isProcessed: { from: current.isProcessed, to: order.isProcessed },
+        },
+      });
+
+      return order;
+    });
   }
 }
 
