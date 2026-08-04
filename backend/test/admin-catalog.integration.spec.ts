@@ -122,6 +122,128 @@ describe('admin catalog API', () => {
       },
     ]);
   });
+
+  it('allows one subcategory level and rejects a third category level', async () => {
+    app = await createApp(appModule);
+    const root = await createCategory(app, {
+      name: 'Экскурсии',
+      slug: 'excursions',
+    });
+    const child = await createCategory(app, {
+      name: 'Анталья',
+      slug: 'antalya-excursions',
+      parentId: root.id,
+    });
+
+    const thirdLevel = await app.inject({
+      method: 'POST',
+      url: '/v1/admin/categories',
+      headers: adminHeaders(),
+      payload: {
+        name: 'Морские прогулки',
+        slug: 'antalya-boat-trips',
+        parentId: child.id,
+      },
+    });
+
+    expect(thirdLevel.statusCode).toBe(400);
+  });
+
+  it('creates booking and payable products with their required payment fields', async () => {
+    app = await createApp(appModule);
+    const category = await createCategory(app, {
+      name: 'Аренда',
+      slug: 'rentals',
+    });
+
+    const booking = await app.inject({
+      method: 'POST',
+      url: '/v1/admin/products',
+      headers: adminHeaders(),
+      payload: {
+        categoryId: category.id,
+        title: 'Аренда яхты',
+        slug: 'yacht-rental',
+        description: 'Индивидуальная заявка на аренду яхты.',
+        type: 'booking',
+      },
+    });
+
+    expect(booking.statusCode).toBe(201);
+    expect(booking.json()).toMatchObject({
+      categoryId: category.id,
+      type: 'booking',
+      priceMinor: null,
+      currency: null,
+    });
+
+    const missingPrice = await app.inject({
+      method: 'POST',
+      url: '/v1/admin/products',
+      headers: adminHeaders(),
+      payload: {
+        categoryId: category.id,
+        title: 'Шуба из Турции',
+        slug: 'turkish-fur-coat',
+        description: 'Шуба от производителя.',
+        type: 'physical',
+      },
+    });
+
+    expect(missingPrice.statusCode).toBe(400);
+
+    const physical = await app.inject({
+      method: 'POST',
+      url: '/v1/admin/products',
+      headers: adminHeaders(),
+      payload: {
+        categoryId: category.id,
+        title: 'Шуба из Турции',
+        slug: 'turkish-fur-coat',
+        description: 'Шуба от производителя.',
+        type: 'physical',
+        priceMinor: 250_000,
+        currency: 'TRY',
+      },
+    });
+
+    expect(physical.statusCode).toBe(201);
+    expect(physical.json()).toMatchObject({
+      categoryId: category.id,
+      type: 'physical',
+      priceMinor: 250_000,
+      currency: 'TRY',
+    });
+
+    const products = await app.inject({
+      method: 'GET',
+      url: '/v1/admin/products',
+      headers: adminHeaders(),
+    });
+
+    expect(products.statusCode).toBe(200);
+    expect(products.json()).toHaveLength(2);
+
+    const product = physical.json<{ id: string }>();
+    const audit = await pool.query<{
+      actor_id: string;
+      action: string;
+      entity_type: string;
+      entity_id: string;
+    }>(
+      'select actor_id, action, entity_type, entity_id from audit_log where entity_id = $1',
+      [product.id],
+    );
+
+    expect(audit.rows).toEqual([
+      {
+        actor_id: 'manager-42',
+        action: 'product.created',
+        entity_type: 'product',
+        entity_id: product.id,
+      },
+    ]);
+  });
 });
 
 function adminHeaders() {
@@ -129,6 +251,21 @@ function adminHeaders() {
     'x-admin-api-key': 'test-static-admin-key',
     'x-admin-actor-id': 'manager-42',
   };
+}
+
+async function createCategory(
+  app: NestFastifyApplication,
+  payload: Record<string, unknown>,
+): Promise<{ id: string }> {
+  const response = await app.inject({
+    method: 'POST',
+    url: '/v1/admin/categories',
+    headers: adminHeaders(),
+    payload,
+  });
+
+  expect(response.statusCode).toBe(201);
+  return response.json<{ id: string }>();
 }
 
 async function createApp(
