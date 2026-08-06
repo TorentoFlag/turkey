@@ -47,5 +47,6 @@ Webhook URL — секрет worker-а. Slack получает минималь�
 
 `WEB_APP_ORIGIN` — не секрет, но обязательная серверная allowlist-настройка для
 browser frontend: API принимает credentialed CORS-запросы только от этого exact
-origin. `NEXT_PUBLIC_API_BASE_URL` — единственная публичная переменная витрины;
+origin. Для Arc checkout это также публичный **HTTPS** origin витрины, из которого
+backend строит return URLs. `NEXT_PUBLIC_API_BASE_URL` — единственная публичная переменная витрины;
 она содержит адрес API и не может содержать ключи, webhook URL или иные секреты.

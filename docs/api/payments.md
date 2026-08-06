@@ -18,6 +18,10 @@ Endpoint доступен только для `auto_delivery` и `physical`. Д�
 
 Frontend сразу перенаправляет пользователя на этот URL. URL создаётся сервером через Arc Hosted Checkout, а не принимается от клиента. Для одного заказа сохраняется один payment record и один ключ идемпотентности: повтор `POST` возвращает ранее созданный URL без повторного действия у провайдера.
 
+Backend передаёт Arc HTTPS `success_url`, `fail_url` и `cancel_url`, построенные
+из `WEB_APP_ORIGIN` и ID заказа. Все три ведут на `/checkout/return`, но только
+для UX. Если публичный HTTPS origin не настроен, checkout не создаётся.
+
 Создание checkout не означает успешную оплату. Успех будет фиксировать только проверенный webhook Arc; return URL покупателя служит лишь для UX.
 
 ## Webhook Arc

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Headers, Post } from '@nestjs/common';
+import { Body, Controller, Get, Headers, Param, Post } from '@nestjs/common';
 import { AuthService, readSessionCookie } from '../auth/auth.service.js';
 import { OrdersService } from './orders.service.js';
 
@@ -23,5 +23,14 @@ export class OrdersController {
   async listForCurrentUser(@Headers('cookie') cookie: string | undefined) {
     const user = await this.auth.getCurrentUser(readSessionCookie(cookie));
     return this.orders.listForUser(user);
+  }
+
+  @Get('me/orders/:id')
+  async getForCurrentUser(
+    @Param('id') id: string,
+    @Headers('cookie') cookie: string | undefined,
+  ) {
+    const user = await this.auth.getCurrentUser(readSessionCookie(cookie));
+    return this.orders.getForUser(user, id);
   }
 }

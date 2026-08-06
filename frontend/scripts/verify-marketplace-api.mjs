@@ -5,13 +5,17 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 const required = [
-  ["src/lib/marketplace/api.ts", "credentials: \"include\""],
-  ["src/components/marketplace/CatalogBrowser.tsx", "marketplaceApi.categories"],
+  ["src/lib/marketplace/api.ts", 'credentials: "include"'],
+  [
+    "src/components/marketplace/CatalogBrowser.tsx",
+    "marketplaceApi.categories",
+  ],
   ["src/components/marketplace/CatalogBrowser.tsx", "marketplaceApi.products"],
   ["src/components/marketplace/AccountGate.tsx", "marketplaceApi.register"],
-  ["src/components/marketplace/AccountOrders.tsx", "marketplaceApi.orders"],
+  ["src/components/marketplace/AccountOrders.tsx", ".orders()"],
   ["src/components/marketplace/CheckoutForm.tsx", "marketplaceApi.createOrder"],
   ["src/components/marketplace/CheckoutForm.tsx", "marketplaceApi.checkout"],
+  ["src/components/marketplace/CheckoutReturn.tsx", "marketplaceApi.order"],
 ];
 
 const forbidden = [
@@ -32,7 +36,11 @@ for (const [relativePath, expected] of required) {
 
 for (const relativePath of forbidden) {
   const content = await read(relativePath);
-  if (content.includes("localStorage") || content.includes("Корзина") || content.includes("Номер карты")) {
+  if (
+    content.includes("localStorage") ||
+    content.includes("Корзина") ||
+    content.includes("Номер карты")
+  ) {
     throw new Error(`${relativePath} contains retired client commerce state`);
   }
 }

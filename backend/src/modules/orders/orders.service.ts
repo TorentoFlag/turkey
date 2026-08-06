@@ -14,6 +14,7 @@ import {
   payments,
   refunds,
   type Order,
+  type Payment,
   type Product,
 } from '../../database/schema/index.js';
 import type { AuthenticatedUser } from '../auth/auth.service.js';
@@ -50,6 +51,9 @@ export type OrderResponse = Readonly<{
   bookingStartDate: string | null;
   bookingEndDate: string | null;
   isProcessed: boolean;
+  payment: Readonly<{
+    state: Payment['state'];
+  }> | null;
   refund: Readonly<{
     state: 'processing' | 'succeeded' | 'failed';
   }> | null;
@@ -166,6 +170,7 @@ export class OrdersService {
     const records = await this.database.db
       .select({
         order: orders,
+        payment: { state: payments.state },
         refund: { state: refunds.state },
       })
       .from(orders)
@@ -174,10 +179,37 @@ export class OrdersService {
       .where(eq(orders.userId, user.id))
       .orderBy(desc(orders.createdAt), desc(orders.id));
 
-    return records.map(({ order, refund }) => ({
-      ...toOrderResponse(order),
-      refund: refund?.state ? { state: refund.state } : null,
-    }));
+    return records.map(({ order, payment, refund }) =>
+      toOrderResponse(order, payment?.state, refund?.state),
+    );
+  }
+
+  async getForUser(
+    user: AuthenticatedUser,
+    id: string,
+  ): Promise<OrderResponse> {
+    const records = await this.database.db
+      .select({
+        order: orders,
+        payment: { state: payments.state },
+        refund: { state: refunds.state },
+      })
+      .from(orders)
+      .leftJoin(payments, eq(payments.orderId, orders.id))
+      .leftJoin(refunds, eq(refunds.paymentId, payments.id))
+      .where(and(eq(orders.id, id), eq(orders.userId, user.id)))
+      .limit(1);
+    const record = records[0];
+
+    if (!record) {
+      throw new NotFoundException('Order was not found.');
+    }
+
+    return toOrderResponse(
+      record.order,
+      record.payment?.state,
+      record.refund?.state,
+    );
   }
 
   private async findOrderByIdempotencyKey(
@@ -279,7 +311,11 @@ export class OrdersService {
   }
 }
 
-function toOrderResponse(order: Order): OrderResponse {
+function toOrderResponse(
+  order: Order,
+  paymentState: Payment['state'] | null | undefined = null,
+  refundState: 'processing' | 'succeeded' | 'failed' | null | undefined = null,
+): OrderResponse {
   return {
     id: order.id,
     product: {
@@ -295,7 +331,8 @@ function toOrderResponse(order: Order): OrderResponse {
     bookingStartDate: order.bookingStartDate,
     bookingEndDate: order.bookingEndDate,
     isProcessed: order.isProcessed,
-    refund: null,
+    payment: paymentState ? { state: paymentState } : null,
+    refund: refundState ? { state: refundState } : null,
     createdAt: order.createdAt,
   };
 }

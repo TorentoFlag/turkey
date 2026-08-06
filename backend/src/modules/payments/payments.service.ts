@@ -3,7 +3,9 @@ import {
   BadRequestException,
   Injectable,
   NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { and, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { DatabaseService } from '../../database/database.service.js';
@@ -17,6 +19,7 @@ import {
 } from '../../database/schema/index.js';
 import type { AuthenticatedUser } from '../auth/auth.service.js';
 import { ArcPayClient } from './arc-pay.client.js';
+import type { AppEnv } from '../../config/env.js';
 
 export type CheckoutResponse = Readonly<{ checkoutUrl: string }>;
 type PayableOrder = Order & Readonly<{ priceMinor: number; currency: string }>;
@@ -33,6 +36,7 @@ export class PaymentsService {
   constructor(
     private readonly database: DatabaseService,
     private readonly arcPay: ArcPayClient,
+    private readonly config: ConfigService<AppEnv, true>,
   ) {}
 
   async createCheckout(
@@ -54,6 +58,7 @@ export class PaymentsService {
       externalId: order.id,
       idempotencyKey: payment.idempotencyKey,
       metadata: { order_id: order.id, payment_id: payment.id },
+      ...this.checkoutReturnUrls(order.id),
     });
     const updated = await this.database.db
       .update(payments)
@@ -71,6 +76,33 @@ export class PaymentsService {
     }
 
     return { checkoutUrl: persisted.checkoutUrl };
+  }
+
+  private checkoutReturnUrls(orderId: string): Readonly<{
+    successUrl: string;
+    failUrl: string;
+    cancelUrl: string;
+  }> {
+    const webAppOrigin = this.config.get('WEB_APP_ORIGIN', { infer: true });
+
+    if (!webAppOrigin || new URL(webAppOrigin).protocol !== 'https:') {
+      throw new ServiceUnavailableException(
+        'Payments are temporarily unavailable.',
+      );
+    }
+
+    const buildUrl = (result: 'success' | 'failed' | 'cancelled') => {
+      const url = new URL('/checkout/return', webAppOrigin);
+      url.searchParams.set('order', orderId);
+      url.searchParams.set('result', result);
+      return url.toString();
+    };
+
+    return {
+      successUrl: buildUrl('success'),
+      failUrl: buildUrl('failed'),
+      cancelUrl: buildUrl('cancelled'),
+    };
   }
 
   async applyArcWebhook(input: {

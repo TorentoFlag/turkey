@@ -35,6 +35,9 @@ export type CreateArcCheckoutInput = Readonly<{
   externalId: string;
   idempotencyKey: string;
   metadata: Record<string, string>;
+  successUrl: string;
+  failUrl: string;
+  cancelUrl: string;
 }>;
 
 export type ArcCheckoutSession = Readonly<{
@@ -113,6 +116,9 @@ export class ArcPayClient {
         external_id: input.externalId,
         metadata: input.metadata,
         payment_methods: paymentMethods,
+        success_url: input.successUrl,
+        fail_url: input.failUrl,
+        cancel_url: input.cancelUrl,
       }),
       headers: {
         ...this.authorizationHeaders(apiKey),

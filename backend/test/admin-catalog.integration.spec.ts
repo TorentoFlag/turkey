@@ -25,6 +25,7 @@ describe('admin catalog API', () => {
     logLevel: process.env.LOG_LEVEL,
     nodeEnv: process.env.NODE_ENV,
     port: process.env.PORT,
+    webAppOrigin: process.env.WEB_APP_ORIGIN,
   };
   let app: NestFastifyApplication | undefined;
   let appModule: Type<unknown>;
@@ -43,6 +44,7 @@ describe('admin catalog API', () => {
     process.env.ARC_API_BASE_URL = 'https://arc.example.test/v1';
     process.env.ARC_SECRET_API_KEY = 'sk_test_checkout';
     process.env.ARC_WEBHOOK_SECRET = 'test-webhook-secret';
+    process.env.WEB_APP_ORIGIN = 'https://shop.example.test';
     await runMigrations(process.env.DATABASE_URL);
     pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
@@ -67,6 +69,7 @@ describe('admin catalog API', () => {
     restoreEnvironment('LOG_LEVEL', previousEnv.logLevel);
     restoreEnvironment('NODE_ENV', previousEnv.nodeEnv);
     restoreEnvironment('PORT', previousEnv.port);
+    restoreEnvironment('WEB_APP_ORIGIN', previousEnv.webAppOrigin);
   });
 
   it('requires the static API key and actor ID before listing categories', async () => {
@@ -965,6 +968,12 @@ describe('admin catalog API', () => {
         body: expect.stringContaining('"amount":1990'),
       }),
     );
+    const checkoutRequest = fetchMock.mock.calls[1]?.[1];
+    expect(JSON.parse(String(checkoutRequest?.body))).toMatchObject({
+      success_url: `https://shop.example.test/checkout/return?order=${orderId}&result=success`,
+      fail_url: `https://shop.example.test/checkout/return?order=${orderId}&result=failed`,
+      cancel_url: `https://shop.example.test/checkout/return?order=${orderId}&result=cancelled`,
+    });
   });
 
   it('accepts a signed capture webhook once and creates the order notification event', async () => {
@@ -1041,6 +1050,31 @@ describe('admin catalog API', () => {
       throw new Error('Expected checkout payment record.');
     }
 
+    const pendingReturn = await app.inject({
+      method: 'GET',
+      url: `/v1/me/orders/${orderId}`,
+      headers: { cookie },
+    });
+    expect(pendingReturn.statusCode).toBe(200);
+    expect(pendingReturn.json()).toMatchObject({
+      id: orderId,
+      payment: { state: 'pending' },
+    });
+    const otherRegistration = await app.inject({
+      method: 'POST',
+      url: '/v1/auth/register',
+      payload: {
+        email: 'other-return-owner@example.test',
+        password: 'correct-horse-battery-staple',
+      },
+    });
+    const forbiddenReturn = await app.inject({
+      method: 'GET',
+      url: `/v1/me/orders/${orderId}`,
+      headers: { cookie: getSessionCookie(otherRegistration) },
+    });
+    expect(forbiddenReturn.statusCode).toBe(404);
+
     const eventId = '018f71c1-4afe-7b1d-9f55-123456789abe';
     const timestamp = String(Math.floor(Date.now() / 1_000));
     const body = JSON.stringify({
@@ -1075,6 +1109,16 @@ describe('admin catalog API', () => {
 
     expect(captured.statusCode).toBe(204);
     expect(repeated.statusCode).toBe(204);
+    const succeededReturn = await app.inject({
+      method: 'GET',
+      url: `/v1/me/orders/${orderId}`,
+      headers: { cookie },
+    });
+    expect(succeededReturn.statusCode).toBe(200);
+    expect(succeededReturn.json()).toMatchObject({
+      id: orderId,
+      payment: { state: 'succeeded' },
+    });
     expect(
       await pool.query(
         'select state, provider_payment_id from payments where id = $1',

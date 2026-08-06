@@ -35,6 +35,9 @@ export type ApiOrder = Readonly<{
   bookingStartDate: string | null;
   bookingEndDate: string | null;
   isProcessed: boolean;
+  payment: Readonly<{
+    state: "pending" | "succeeded" | "failed";
+  }> | null;
   refund: Readonly<{
     state: "processing" | "succeeded" | "failed";
   }> | null;
@@ -42,13 +45,18 @@ export type ApiOrder = Readonly<{
 }>;
 
 export class MarketplaceApiError extends Error {
-  constructor(readonly status: number, message: string) {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
     super(message);
     this.name = "MarketplaceApiError";
   }
 }
 
-const apiBaseUrl = (process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3001").replace(/\/$/, "");
+const apiBaseUrl = (
+  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3001"
+).replace(/\/$/, "");
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   let response: Response;
@@ -63,11 +71,17 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
       },
     });
   } catch {
-    throw new MarketplaceApiError(0, "Не удалось связаться с сервисом. Попробуйте ещё раз.");
+    throw new MarketplaceApiError(
+      0,
+      "Не удалось связаться с сервисом. Попробуйте ещё раз.",
+    );
   }
 
   if (!response.ok) {
-    throw new MarketplaceApiError(response.status, errorMessage(response.status));
+    throw new MarketplaceApiError(
+      response.status,
+      errorMessage(response.status),
+    );
   }
 
   return response.json() as Promise<T>;
@@ -95,7 +109,9 @@ export const marketplaceApi = {
     });
   },
   logout() {
-    return request<Record<string, never>>("/v1/auth/logout", { method: "POST" });
+    return request<Record<string, never>>("/v1/auth/logout", {
+      method: "POST",
+    });
   },
   me() {
     return request<{ email: string }>("/v1/me");
@@ -104,14 +120,21 @@ export const marketplaceApi = {
     return request<ApiCategory[]>("/v1/public/categories");
   },
   products(categorySlug?: string) {
-    const query = categorySlug ? `?categorySlug=${encodeURIComponent(categorySlug)}` : "";
+    const query = categorySlug
+      ? `?categorySlug=${encodeURIComponent(categorySlug)}`
+      : "";
     return request<ApiProduct[]>(`/v1/public/products${query}`);
   },
   product(slug: string) {
-    return request<ApiProduct>(`/v1/public/products/${encodeURIComponent(slug)}`);
+    return request<ApiProduct>(
+      `/v1/public/products/${encodeURIComponent(slug)}`,
+    );
   },
   orders() {
     return request<ApiOrder[]>("/v1/me/orders");
+  },
+  order(id: string) {
+    return request<ApiOrder>(`/v1/me/orders/${encodeURIComponent(id)}`);
   },
   createOrder(input: {
     productId: string;
@@ -130,8 +153,11 @@ export const marketplaceApi = {
     });
   },
   checkout(orderId: string) {
-    return request<{ checkoutUrl: string }>(`/v1/orders/${encodeURIComponent(orderId)}/checkout`, {
-      method: "POST",
-    });
+    return request<{ checkoutUrl: string }>(
+      `/v1/orders/${encodeURIComponent(orderId)}/checkout`,
+      {
+        method: "POST",
+      },
+    );
   },
 };
