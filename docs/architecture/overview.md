@@ -17,17 +17,17 @@ Arc Pay ── signed webhook ────────────────> 
 
 ## Модули backend
 
-| Модуль | Владеет | Не делает |
-| --- | --- | --- |
-| `auth` | регистрация, вход, хеш пароля, сессии | данные каталога и заказов |
-| `catalog` | категории, подкатегории, товары, публичная выдача | supplier sync и изображения-файлы |
-| `orders` | создание заявок, контактные данные, `is_processed`, история | подтверждение платежа |
-| `payments` | checkout Arc, платежные факты, webhook идемпотентность | ручная обработка заказа |
-| `refunds` | полный возврат, техническое состояние | изменение `is_processed` |
-| `notifications` | намерения уведомлений/outbox | прямую бизнес-логику HTTP |
-| `audit` | неизменяемый след действий admin | авторизацию внешней админки |
-| `admin-api` | контракт с общей админкой и её actor context | собственный admin UI |
-| `integrations` | Arc Pay, Resend, Slack clients | доменные решения |
+| Модуль          | Владеет                                                     | Не делает                         |
+| --------------- | ----------------------------------------------------------- | --------------------------------- |
+| `auth`          | регистрация, вход, хеш пароля, сессии                       | данные каталога и заказов         |
+| `catalog`       | категории, подкатегории, товары, публичная выдача           | supplier sync и изображения-файлы |
+| `orders`        | создание заявок, контактные данные, `is_processed`, история | подтверждение платежа             |
+| `payments`      | checkout Arc, платежные факты, webhook идемпотентность      | ручная обработка заказа           |
+| `refunds`       | полный возврат, техническое состояние                       | изменение `is_processed`          |
+| `notifications` | намерения уведомлений/outbox                                | прямую бизнес-логику HTTP         |
+| `audit`         | неизменяемый след действий admin                            | авторизацию внешней админки       |
+| `admin-api`     | контракт с общей админкой и её actor context                | собственный admin UI              |
+| `integrations`  | Arc Pay, Resend, Slack clients                              | доменные решения                  |
 
 Модуль обращается к другому через явный application service/порт, а не через прямую запись в чужую таблицу. Контроллеры тонкие: проверяют transport/input и вызывают use case. Провайдеры заменяемы через интерфейсы, но отдельные abstraction-слои не создаются без второго реального провайдера.
 
@@ -35,17 +35,17 @@ Arc Pay ── signed webhook ────────────────> 
 
 Минимальные таблицы:
 
-| Таблица | Существенные поля и инварианты |
-| --- | --- |
-| `users` | `id`, unique normalized `email`, `password_hash`, timestamps |
-| `sessions` | `user_id`, hash токена, expiry/revocation; в cookie только непрозрачный токен |
-| `categories` | `parent_id`, `name`, unique `slug`, `image_url`, `sort_order`, `is_active`; constraint глубины два проверяется сервисом и БД где возможно |
-| `products` | `category_id`, `type`, title/description/image URL, `price_minor`, `currency`, `is_active`, `sort_order`; сумма обязательна для двух платных типов |
-| `orders` | `user_id`, product snapshot (название/цена/валюта), contact snapshot, `type`, booking dates/address по типу, `is_processed`, timestamps |
-| `payments` | `order_id`, Arc checkout/payment ID, сумма minor units, currency, technical state, webhook metadata; уникальность provider ID |
-| `refunds` | `payment_id`, Arc refund ID, исходная полная сумма, state, requested/confirmed timestamps, safe error |
-| `outbox_events` | event type, aggregate ID, serialized безопасный payload, idempotency key, attempts, next attempt, delivered timestamp |
-| `audit_log` | trusted actor, action, aggregate, before/after redacted metadata, request/correlation ID, timestamp |
+| Таблица         | Существенные поля и инварианты                                                                                                                     |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `users`         | `id`, unique normalized `email`, `password_hash`, timestamps                                                                                       |
+| `sessions`      | `user_id`, hash токена, expiry/revocation; в cookie только непрозрачный токен                                                                      |
+| `categories`    | `parent_id`, `name`, unique `slug`, `image_url`, `sort_order`, `is_active`; constraint глубины два проверяется сервисом и БД где возможно          |
+| `products`      | `category_id`, `type`, title/description/image URL, `price_minor`, `currency`, `is_active`, `sort_order`; сумма обязательна для двух платных типов |
+| `orders`        | `user_id`, product snapshot (название/цена/валюта), contact snapshot, `type`, booking dates/address по типу, `is_processed`, timestamps            |
+| `payments`      | `order_id`, Arc checkout/payment ID, сумма minor units, currency, technical state, webhook metadata; уникальность provider ID                      |
+| `refunds`       | `payment_id`, Arc refund ID, исходная полная сумма, state, requested/confirmed timestamps, safe error                                              |
+| `outbox_events` | event type, aggregate ID, serialized безопасный payload, idempotency key, attempts, next attempt, delivered timestamp                              |
+| `audit_log`     | trusted actor, action, aggregate, before/after redacted metadata, request/correlation ID, timestamp                                                |
 
 `orders.is_processed` — единственное ручное состояние менеджера. Нельзя заменить его `payment_state`, `refund_state`, `delivery` или набором статусов. Деньги хранятся целым числом minor units (`price_minor`), с явной ISO-валютой; `float` запрещён.
 
@@ -55,15 +55,15 @@ Arc Pay ── signed webhook ────────────────> 
 
 Точные JSON-схемы будут закреплены до реализации, но границы следующие:
 
-| Группа | Примеры |
-| --- | --- |
-| `GET /v1/public/categories`, `/products`, `/products/:slug` | публичный активный каталог |
-| `POST /v1/auth/register`, `/login`, `/logout`; `GET /v1/me` | учётная запись и сессия |
-| `POST /v1/orders` | создаёт бронирование либо платный intent; только авторизованный пользователь |
-| `POST /v1/orders/:id/checkout` | только владелец, только `auto_delivery`/`physical`; создаёт/возвращает Arc checkout URL идемпотентно |
-| `GET /v1/me/orders` | только собственная история |
-| `POST /v1/webhooks/arc` | отдельный публичный endpoint с проверкой подписи |
-| `/v1/admin/*` | только сервер общей админки: каталог, обработка, полный возврат, аудит |
+| Группа                                                      | Примеры                                                                                              |
+| ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `GET /v1/public/categories`, `/products`, `/products/:slug` | публичный активный каталог                                                                           |
+| `POST /v1/auth/register`, `/login`, `/logout`; `GET /v1/me` | учётная запись и сессия                                                                              |
+| `POST /v1/orders`                                           | создаёт бронирование либо платный intent; только авторизованный пользователь                         |
+| `POST /v1/orders/:id/checkout`                              | только владелец, только `auto_delivery`/`physical`; создаёт/возвращает Arc checkout URL идемпотентно |
+| `GET /v1/me/orders`                                         | только собственная история                                                                           |
+| `POST /v1/webhooks/arc`                                     | отдельный публичный endpoint с проверкой подписи                                                     |
+| `/v1/admin/*`                                               | только сервер общей админки: каталог, обработка, полный возврат, аудит                               |
 
 Клиент не передаёт цену, валюту, `is_processed`, refund state, actor или payment success. Все эти значения рассчитывает/принимает backend. Ошибки API — типизированные, без provider secret/error body для клиента.
 
@@ -97,8 +97,8 @@ Return URL Arc — только UX-страница, а не доказател�
 
 ## Безопасность и надёжность
 
-- Пароль: Argon2id, допустимая политика сложности/длины, rate-limit регистрации и входа. Никаких паролей в логах и localStorage.
-- Сессия: Secure, HttpOnly, SameSite cookie; CSRF-защита для cookie-mutating запросов; CORS только разрешённым origin.
+- Пароль: Argon2id, допустимая политика сложности/длины, rate-limit регистрации и входа в PostgreSQL по SHA-256 ключу action/IP/normalized email. Никаких паролей в логах и localStorage.
+- Сессия: Secure, HttpOnly, SameSite cookie; browser mutation с `Origin` требует exact `WEB_APP_ORIGIN`, а authenticated mutation — дополнительный `X-CSRF-Token`, HMAC-привязанный к текущей сессии. CORS только разрешённым origin.
 - Внешняя админка: server-to-server аутентификация, scopes и передача проверенного `actor_id`; её browser token не должен давать доступ к Admin API напрямую.
 - Arc: raw request body, HMAC и timestamp проверяются до parse; `Webhook-Id` дедуплицируется в транзакции. Неверная подпись не меняет данные.
 - Idempotency: order submit, checkout creation, webhook и refund выдерживают повтор запроса без двойной операции/уведомления.

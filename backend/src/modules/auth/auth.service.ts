@@ -1,14 +1,28 @@
-import { createHash, randomBytes } from 'node:crypto';
+import {
+  createHash,
+  createHmac,
+  randomBytes,
+  timingSafeEqual,
+} from 'node:crypto';
 import {
   ConflictException,
+  HttpException,
+  HttpStatus,
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
 import * as argon2 from 'argon2';
-import { and, eq, gt, isNull } from 'drizzle-orm';
+import { and, eq, gt, isNull, sql } from 'drizzle-orm';
 import { z } from 'zod';
+import type { AppEnv } from '../../config/env.js';
 import { DatabaseService } from '../../database/database.service.js';
-import { outboxEvents, sessions, users } from '../../database/schema/index.js';
+import {
+  authRateLimits,
+  outboxEvents,
+  sessions,
+  users,
+} from '../../database/schema/index.js';
+import { ConfigService } from '@nestjs/config';
 
 const registrationSchema = z
   .object({
@@ -31,10 +45,14 @@ export type Registration = Readonly<{
 
 @Injectable()
 export class AuthService {
-  constructor(private readonly database: DatabaseService) {}
+  constructor(
+    private readonly database: DatabaseService,
+    private readonly config: ConfigService<AppEnv, true>,
+  ) {}
 
-  async register(input: unknown): Promise<Registration> {
+  async register(input: unknown, sourceIp: string): Promise<Registration> {
     const command = registrationSchema.parse(input);
+    await this.consumeAttempt('register', command.email, sourceIp);
     const passwordHash = await argon2.hash(command.password, {
       type: argon2.argon2id,
       memoryCost: 19_456,
@@ -109,8 +127,9 @@ export class AuthService {
     return user;
   }
 
-  async login(input: unknown): Promise<Registration> {
+  async login(input: unknown, sourceIp: string): Promise<Registration> {
     const command = registrationSchema.parse(input);
+    await this.consumeAttempt('login', command.email, sourceIp);
     const records = await this.database.db
       .select()
       .from(users)
@@ -137,6 +156,67 @@ export class AuthService {
       .update(sessions)
       .set({ revokedAt: new Date() })
       .where(eq(sessions.tokenHash, hashSessionToken(sessionToken)));
+  }
+
+  csrfToken(sessionToken: string): string {
+    return createHmac('sha256', sessionToken)
+      .update('turkiye:csrf:v1')
+      .digest('base64url');
+  }
+
+  isCsrfTokenValid(
+    sessionToken: string,
+    received: string | undefined,
+  ): boolean {
+    if (!received) return false;
+    const expected = Buffer.from(this.csrfToken(sessionToken));
+    const actual = Buffer.from(received);
+
+    return (
+      expected.length === actual.length && timingSafeEqual(expected, actual)
+    );
+  }
+
+  private async consumeAttempt(
+    action: 'login' | 'register',
+    email: string,
+    sourceIp: string,
+  ): Promise<void> {
+    const now = new Date();
+    const windowSeconds = this.config.get('AUTH_RATE_LIMIT_WINDOW_SECONDS', {
+      infer: true,
+    });
+    const windowBoundary = new Date(now.getTime() - windowSeconds * 1_000);
+    const keyHash = createHash('sha256')
+      .update(`${action}:${sourceIp}:${email}`)
+      .digest('hex');
+    const [record] = await this.database.db
+      .insert(authRateLimits)
+      .values({
+        keyHash,
+        attempts: 1,
+        windowStartedAt: now,
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: authRateLimits.keyHash,
+        set: {
+          attempts: sql`case when ${authRateLimits.windowStartedAt} <= ${windowBoundary} then 1 else ${authRateLimits.attempts} + 1 end`,
+          windowStartedAt: sql`case when ${authRateLimits.windowStartedAt} <= ${windowBoundary} then ${now} else ${authRateLimits.windowStartedAt} end`,
+          updatedAt: now,
+        },
+      })
+      .returning({ attempts: authRateLimits.attempts });
+
+    const maximum = this.config.get('AUTH_RATE_LIMIT_MAX_ATTEMPTS', {
+      infer: true,
+    });
+    if (!record || record.attempts > maximum) {
+      throw new HttpException(
+        'Too many authentication attempts.',
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
   }
 }
 

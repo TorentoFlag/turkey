@@ -21,6 +21,8 @@ describe('admin catalog API', () => {
     arcApiBaseUrl: process.env.ARC_API_BASE_URL,
     arcSecretApiKey: process.env.ARC_SECRET_API_KEY,
     arcWebhookSecret: process.env.ARC_WEBHOOK_SECRET,
+    authRateLimitMaxAttempts: process.env.AUTH_RATE_LIMIT_MAX_ATTEMPTS,
+    authRateLimitWindowSeconds: process.env.AUTH_RATE_LIMIT_WINDOW_SECONDS,
     databaseUrl: process.env.DATABASE_URL,
     logLevel: process.env.LOG_LEVEL,
     nodeEnv: process.env.NODE_ENV,
@@ -45,6 +47,8 @@ describe('admin catalog API', () => {
     process.env.ARC_SECRET_API_KEY = 'sk_test_checkout';
     process.env.ARC_WEBHOOK_SECRET = 'test-webhook-secret';
     process.env.WEB_APP_ORIGIN = 'https://shop.example.test';
+    process.env.AUTH_RATE_LIMIT_MAX_ATTEMPTS = '2';
+    process.env.AUTH_RATE_LIMIT_WINDOW_SECONDS = '900';
     await runMigrations(process.env.DATABASE_URL);
     pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
@@ -65,6 +69,14 @@ describe('admin catalog API', () => {
     restoreEnvironment('ARC_API_BASE_URL', previousEnv.arcApiBaseUrl);
     restoreEnvironment('ARC_SECRET_API_KEY', previousEnv.arcSecretApiKey);
     restoreEnvironment('ARC_WEBHOOK_SECRET', previousEnv.arcWebhookSecret);
+    restoreEnvironment(
+      'AUTH_RATE_LIMIT_MAX_ATTEMPTS',
+      previousEnv.authRateLimitMaxAttempts,
+    );
+    restoreEnvironment(
+      'AUTH_RATE_LIMIT_WINDOW_SECONDS',
+      previousEnv.authRateLimitWindowSeconds,
+    );
     restoreEnvironment('DATABASE_URL', previousEnv.databaseUrl);
     restoreEnvironment('LOG_LEVEL', previousEnv.logLevel);
     restoreEnvironment('NODE_ENV', previousEnv.nodeEnv);
@@ -544,6 +556,117 @@ describe('admin catalog API', () => {
     });
 
     expect(profile.statusCode).toBe(401);
+  });
+
+  it('requires trusted origin and a session-derived CSRF token for browser mutations', async () => {
+    app = await createApp(appModule);
+    const rejectedOrigin = await app.inject({
+      method: 'POST',
+      url: '/v1/auth/register',
+      headers: { origin: 'https://untrusted.example.test' },
+      payload: {
+        email: 'cross-origin@example.test',
+        password: 'correct-horse-battery-staple',
+      },
+    });
+    expect(rejectedOrigin.statusCode).toBe(403);
+
+    const category = await createCategory(app, {
+      name: 'CSRF бронирование',
+      slug: 'csrf-booking',
+    });
+    const product = await createProduct(app, {
+      categoryId: category.id,
+      title: 'Бронирование для CSRF',
+      slug: 'csrf-booking-product',
+      description: 'Тестовая заявка с CSRF защитой.',
+      type: 'booking',
+    });
+
+    const registration = await app.inject({
+      method: 'POST',
+      url: '/v1/auth/register',
+      headers: { origin: 'https://shop.example.test' },
+      payload: {
+        email: 'csrf-owner@example.test',
+        password: 'correct-horse-battery-staple',
+      },
+    });
+    const cookie = getSessionCookie(registration);
+    const csrf = await app.inject({
+      method: 'GET',
+      url: '/v1/auth/csrf',
+      headers: { cookie },
+    });
+    expect(csrf.statusCode).toBe(200);
+    const token = csrf.json<{ token: string }>().token;
+
+    const orderPayload = {
+      productId: product.id,
+      email: 'csrf-owner@example.test',
+      phone: '+905551112233',
+      bookingStartDate: '2026-09-10',
+      bookingEndDate: '2026-09-12',
+    };
+    const missingOrderToken = await app.inject({
+      method: 'POST',
+      url: '/v1/orders',
+      headers: { cookie, origin: 'https://shop.example.test' },
+      payload: orderPayload,
+    });
+    expect(missingOrderToken.statusCode).toBe(403);
+    const validOrder = await app.inject({
+      method: 'POST',
+      url: '/v1/orders',
+      headers: {
+        cookie,
+        origin: 'https://shop.example.test',
+        'x-csrf-token': token,
+      },
+      payload: orderPayload,
+    });
+    expect(validOrder.statusCode).toBe(201);
+
+    const missingToken = await app.inject({
+      method: 'POST',
+      url: '/v1/auth/logout',
+      headers: { cookie, origin: 'https://shop.example.test' },
+    });
+    expect(missingToken.statusCode).toBe(403);
+    const validLogout = await app.inject({
+      method: 'POST',
+      url: '/v1/auth/logout',
+      headers: {
+        cookie,
+        origin: 'https://shop.example.test',
+        'x-csrf-token': token,
+      },
+    });
+    expect(validLogout.statusCode).toBe(201);
+  });
+
+  it('limits repeated login attempts with a hashed PostgreSQL identity key', async () => {
+    app = await createApp(appModule);
+    const request = {
+      method: 'POST',
+      url: '/v1/auth/login',
+      payload: {
+        email: 'limited-login@example.test',
+        password: 'correct-horse-battery-staple',
+      },
+    } as const;
+    expect((await app.inject(request)).statusCode).toBe(401);
+    expect((await app.inject(request)).statusCode).toBe(401);
+    expect((await app.inject(request)).statusCode).toBe(429);
+    const stored = await pool.query<{ key_hash: string }>(
+      'select key_hash from auth_rate_limits where attempts = 3',
+    );
+    expect(stored.rows).toEqual([
+      { key_hash: expect.stringMatching(/^[a-f0-9]{64}$/) },
+    ]);
+    expect(JSON.stringify(stored.rows)).not.toContain(
+      'limited-login@example.test',
+    );
   });
 
   it('creates a booking request from an active product for the authenticated user', async () => {

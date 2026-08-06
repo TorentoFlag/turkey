@@ -16,6 +16,7 @@ const required = [
   ["src/components/marketplace/CheckoutForm.tsx", "marketplaceApi.createOrder"],
   ["src/components/marketplace/CheckoutForm.tsx", "marketplaceApi.checkout"],
   ["src/components/marketplace/CheckoutReturn.tsx", "marketplaceApi.order"],
+  ["src/lib/marketplace/api.ts", "x-csrf-token"],
 ];
 
 const forbidden = [

@@ -57,6 +57,7 @@ export class MarketplaceApiError extends Error {
 const apiBaseUrl = (
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3001"
 ).replace(/\/$/, "");
+let csrfToken: string | null = null;
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   let response: Response;
@@ -89,29 +90,71 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 function errorMessage(status: number): string {
   if (status === 401) return "Войдите в аккаунт, чтобы продолжить.";
+  if (status === 403)
+    return "Не удалось подтвердить действие. Обновите страницу и повторите.";
   if (status === 404) return "Данные больше недоступны.";
   if (status === 409) return "Это действие уже было выполнено.";
+  if (status === 429) return "Слишком много попыток. Попробуйте позже.";
   if (status === 400 || status === 422) return "Проверьте заполненные поля.";
   return "Сервис временно недоступен. Попробуйте ещё раз.";
 }
 
+async function csrfHeaders(): Promise<HeadersInit> {
+  if (csrfToken === null) {
+    const response = await fetch(`${apiBaseUrl}/v1/auth/csrf`, {
+      credentials: "include",
+    });
+    if (!response.ok) {
+      throw new MarketplaceApiError(
+        response.status,
+        errorMessage(response.status),
+      );
+    }
+    csrfToken = ((await response.json()) as { token: string }).token;
+  }
+
+  return { "x-csrf-token": csrfToken };
+}
+
+async function authenticatedMutation<T>(
+  path: string,
+  init: RequestInit,
+): Promise<T> {
+  return request(path, {
+    ...init,
+    headers: {
+      ...(await csrfHeaders()),
+      ...init.headers,
+    },
+  });
+}
+
 export const marketplaceApi = {
-  register(input: { email: string; password: string }) {
-    return request<{ email: string }>("/v1/auth/register", {
+  async register(input: { email: string; password: string }) {
+    const registration = await request<{ email: string }>("/v1/auth/register", {
       method: "POST",
       body: JSON.stringify(input),
     });
+    csrfToken = null;
+    return registration;
   },
-  login(input: { email: string; password: string }) {
-    return request<{ email: string }>("/v1/auth/login", {
+  async login(input: { email: string; password: string }) {
+    const login = await request<{ email: string }>("/v1/auth/login", {
       method: "POST",
       body: JSON.stringify(input),
     });
+    csrfToken = null;
+    return login;
   },
-  logout() {
-    return request<Record<string, never>>("/v1/auth/logout", {
-      method: "POST",
-    });
+  async logout() {
+    const response = await authenticatedMutation<Record<string, never>>(
+      "/v1/auth/logout",
+      {
+        method: "POST",
+      },
+    );
+    csrfToken = null;
+    return response;
   },
   me() {
     return request<{ email: string }>("/v1/me");
@@ -146,14 +189,14 @@ export const marketplaceApi = {
     idempotencyKey: string;
   }) {
     const { idempotencyKey, ...body } = input;
-    return request<ApiOrder>("/v1/orders", {
+    return authenticatedMutation<ApiOrder>("/v1/orders", {
       method: "POST",
       headers: { "idempotency-key": idempotencyKey },
       body: JSON.stringify(body),
     });
   },
   checkout(orderId: string) {
-    return request<{ checkoutUrl: string }>(
+    return authenticatedMutation<{ checkoutUrl: string }>(
       `/v1/orders/${encodeURIComponent(orderId)}/checkout`,
       {
         method: "POST",

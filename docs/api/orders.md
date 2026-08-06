@@ -4,6 +4,12 @@
 
 Оба endpoint используют server-side сессию из cookie `turkiye_session`. Без действующей сессии API отвечает `401`. Клиент не передаёт `userId`, тип товара, цену, валюту или `isProcessed`.
 
+Для browser mutation с заголовком `Origin` он должен точно совпадать с
+`WEB_APP_ORIGIN`. После входа/регистрации frontend получает
+`GET /v1/auth/csrf` и передаёт возвращённый `X-CSRF-Token` в `POST /v1/orders`
+и `POST /v1/orders/:id/checkout`. Токен привязан к текущей server-side сессии;
+его нет в localStorage и он не нужен внешней админке или Arc webhook.
+
 ## Создать заказ или заявку
 
 `POST /v1/orders`

@@ -1,6 +1,15 @@
-import { Body, Controller, Get, Headers, Post, Res } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Headers,
+  Post,
+  Req,
+  Res,
+  UseGuards,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import type { FastifyReply } from 'fastify';
+import type { FastifyReply, FastifyRequest } from 'fastify';
 import type { AppEnv } from '../../config/env.js';
 import {
   AuthService,
@@ -8,8 +17,13 @@ import {
   readSessionCookie,
   sessionCookie,
 } from './auth.service.js';
+import {
+  SessionCsrfGuard,
+  TrustedBrowserOriginGuard,
+} from './browser-security.guard.js';
 
 @Controller('v1')
+@UseGuards(TrustedBrowserOriginGuard)
 export class AuthController {
   constructor(
     private readonly auth: AuthService,
@@ -19,9 +33,10 @@ export class AuthController {
   @Post('auth/register')
   async register(
     @Body() body: unknown,
+    @Req() request: FastifyRequest,
     @Res({ passthrough: true }) response: FastifyReply,
   ) {
-    const registration = await this.auth.register(body);
+    const registration = await this.auth.register(body, request.ip);
     response.header(
       'set-cookie',
       sessionCookie(
@@ -38,12 +53,25 @@ export class AuthController {
     return { email: user.email };
   }
 
+  @Get('auth/csrf')
+  async csrf(@Headers('cookie') cookie: string | undefined) {
+    const sessionToken = readSessionCookie(cookie);
+    await this.auth.getCurrentUser(sessionToken);
+
+    if (!sessionToken) {
+      throw new Error('Authenticated session token is missing.');
+    }
+
+    return { token: this.auth.csrfToken(sessionToken) };
+  }
+
   @Post('auth/login')
   async login(
     @Body() body: unknown,
+    @Req() request: FastifyRequest,
     @Res({ passthrough: true }) response: FastifyReply,
   ) {
-    const login = await this.auth.login(body);
+    const login = await this.auth.login(body, request.ip);
     response.header(
       'set-cookie',
       sessionCookie(login.sessionToken, this.secure),
@@ -52,6 +80,7 @@ export class AuthController {
   }
 
   @Post('auth/logout')
+  @UseGuards(SessionCsrfGuard)
   async logout(
     @Headers('cookie') cookie: string | undefined,
     @Res({ passthrough: true }) response: FastifyReply,

@@ -1,4 +1,11 @@
-import { index, pgTable, timestamp, uuid, varchar } from 'drizzle-orm/pg-core';
+import {
+  index,
+  integer,
+  pgTable,
+  timestamp,
+  uuid,
+  varchar,
+} from 'drizzle-orm/pg-core';
 
 export const users = pgTable('users', {
   id: uuid('id').defaultRandom().primaryKey(),
@@ -46,5 +53,25 @@ export const sessions = pgTable(
   ],
 );
 
+export const authRateLimits = pgTable(
+  'auth_rate_limits',
+  {
+    keyHash: varchar('key_hash', { length: 64 }).primaryKey(),
+    attempts: integer('attempts').notNull(),
+    windowStartedAt: timestamp('window_started_at', {
+      mode: 'date',
+      withTimezone: true,
+    }).notNull(),
+    updatedAt: timestamp('updated_at', {
+      mode: 'date',
+      withTimezone: true,
+    })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [index('auth_rate_limits_updated_idx').on(table.updatedAt)],
+);
+
 export type User = typeof users.$inferSelect;
 export type Session = typeof sessions.$inferSelect;
+export type AuthRateLimit = typeof authRateLimits.$inferSelect;

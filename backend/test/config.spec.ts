@@ -18,6 +18,8 @@ describe('parseEnv', () => {
       LOG_LEVEL: 'warn',
       ADMIN_API_KEY: valid.ADMIN_API_KEY,
       ARC_API_BASE_URL: 'https://api.arcpay.space/v1',
+      AUTH_RATE_LIMIT_MAX_ATTEMPTS: 10,
+      AUTH_RATE_LIMIT_WINDOW_SECONDS: 900,
     });
   });
 

@@ -1,8 +1,13 @@
-import { Controller, Headers, Param, Post } from '@nestjs/common';
+import { Controller, Headers, Param, Post, UseGuards } from '@nestjs/common';
 import { AuthService, readSessionCookie } from '../auth/auth.service.js';
+import {
+  SessionCsrfGuard,
+  TrustedBrowserOriginGuard,
+} from '../auth/browser-security.guard.js';
 import { PaymentsService } from './payments.service.js';
 
 @Controller('v1/orders')
+@UseGuards(TrustedBrowserOriginGuard, SessionCsrfGuard)
 export class CheckoutController {
   constructor(
     private readonly auth: AuthService,

@@ -1,8 +1,21 @@
-import { Body, Controller, Get, Headers, Param, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Headers,
+  Param,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import { AuthService, readSessionCookie } from '../auth/auth.service.js';
+import {
+  SessionCsrfGuard,
+  TrustedBrowserOriginGuard,
+} from '../auth/browser-security.guard.js';
 import { OrdersService } from './orders.service.js';
 
 @Controller('v1')
+@UseGuards(TrustedBrowserOriginGuard, SessionCsrfGuard)
 export class OrdersController {
   constructor(
     private readonly auth: AuthService,

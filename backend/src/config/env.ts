@@ -24,6 +24,18 @@ const envSchema = z.object({
   RESEND_FROM: z.string().trim().min(1).max(320).optional(),
   SLACK_WEBHOOK_URL: z.string().url().optional(),
   WEB_APP_ORIGIN: z.string().url().optional(),
+  AUTH_RATE_LIMIT_MAX_ATTEMPTS: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(100)
+    .default(10),
+  AUTH_RATE_LIMIT_WINDOW_SECONDS: z.coerce
+    .number()
+    .int()
+    .min(60)
+    .max(86_400)
+    .default(900),
 });
 
 export type AppEnv = Readonly<z.output<typeof envSchema>>;
