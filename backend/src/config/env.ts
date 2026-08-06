@@ -36,6 +36,12 @@ const envSchema = z.object({
     .min(60)
     .max(86_400)
     .default(900),
+  WORKER_POLL_INTERVAL_MS: z.coerce
+    .number()
+    .int()
+    .min(250)
+    .max(300_000)
+    .default(5_000),
 });
 
 export type AppEnv = Readonly<z.output<typeof envSchema>>;

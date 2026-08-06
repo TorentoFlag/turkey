@@ -2,10 +2,12 @@ import path from "node:path";
 
 import type { NextConfig } from "next";
 
+const basePath = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+
 const nextConfig: NextConfig = {
-  basePath: process.env.NODE_ENV === "production" ? "/turkiye" : "",
+  basePath,
   env: {
-    NEXT_PUBLIC_BASE_PATH: process.env.NODE_ENV === "production" ? "/turkiye" : "",
+    NEXT_PUBLIC_BASE_PATH: basePath,
   },
   images: {
     unoptimized: true,

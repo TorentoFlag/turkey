@@ -20,6 +20,7 @@ describe('parseEnv', () => {
       ARC_API_BASE_URL: 'https://api.arcpay.space/v1',
       AUTH_RATE_LIMIT_MAX_ATTEMPTS: 10,
       AUTH_RATE_LIMIT_WINDOW_SECONDS: 900,
+      WORKER_POLL_INTERVAL_MS: 5_000,
     });
   });
 
@@ -30,6 +31,7 @@ describe('parseEnv', () => {
     { ...valid, NODE_ENV: 'preview' },
     { ...valid, ADMIN_API_KEY: undefined },
     { ...valid, ADMIN_API_KEY: '   ' },
+    { ...valid, WORKER_POLL_INTERVAL_MS: '249' },
   ])('rejects invalid server configuration', (input) => {
     expect(() => parseEnv(input)).toThrow(/configuration/i);
   });

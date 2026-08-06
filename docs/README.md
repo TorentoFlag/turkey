@@ -12,6 +12,7 @@
 | [superpowers/specs/2026-08-04-nest-fastify-backend-foundation-design.md](superpowers/specs/2026-08-04-nest-fastify-backend-foundation-design.md) | Утверждённый стек и граница первого backend-среза. |
 | [development/agent-pipeline.md](development/agent-pipeline.md) | Роли, передача задач и порядок агентской разработки. |
 | [development/quality-gates.md](development/quality-gates.md) | Обязательная проверка и условия приёмки. |
+| [development/production-runbook.md](development/production-runbook.md) | Конфигурация, preflight и безопасный запуск runtime-ролей. |
 | [research/agentic-development-practices.md](research/agentic-development-practices.md) | Обоснование выбранного агентского процесса и первичные источники. |
 | [design-reference.md](design-reference.md) | Что можно брать из материалов дизайнера и что нельзя считать требованием. |
 
