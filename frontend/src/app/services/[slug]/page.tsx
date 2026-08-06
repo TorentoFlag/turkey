@@ -1,77 +1,59 @@
-import Image from "next/image";
-import Link from "next/link";
-import { notFound } from "next/navigation";
+"use client";
 
-import { ProductActions } from "@/components/marketplace/ProductActions";
+import Link from "next/link";
+import { useParams } from "next/navigation";
+import { useEffect, useState } from "react";
+
 import { MarketplaceBreadcrumbs } from "@/components/marketplace/MarketplaceBreadcrumbs";
 import { MarketplaceHeader } from "@/components/marketplace/MarketplaceHeader";
-import { marketplaceServices } from "@/data/marketplace";
-import { sitePath } from "@/lib/sitePath";
+import { ProductActions } from "@/components/marketplace/ProductActions";
+import { marketplaceApi, type ApiProduct } from "@/lib/marketplace/api";
 
 import styles from "./product.module.css";
 
-type ServicePageProps = {
-  params: Promise<{ slug: string }>;
-};
-
-export function generateStaticParams() {
-  return marketplaceServices.map(({ slug }) => ({ slug }));
+function typeLabel(type: ApiProduct["type"]) {
+  if (type === "booking") return "Бронирование";
+  if (type === "physical") return "Товар с доставкой";
+  return "Автовыдача";
 }
 
-export default async function ServicePage({ params }: ServicePageProps) {
-  const { slug } = await params;
-  const service = marketplaceServices.find((item) => item.slug === slug);
+function priceLabel(product: ApiProduct) {
+  if (product.type === "booking") return "Цена по запросу";
+  if (product.priceMinor === null || product.currency === null) return "Цена уточняется";
+  return new Intl.NumberFormat("ru-RU", { style: "currency", currency: product.currency }).format(product.priceMinor / 100);
+}
 
-  if (!service) notFound();
+export default function ServicePage() {
+  const { slug } = useParams<{ slug: string }>();
+  const [product, setProduct] = useState<ApiProduct | null>(null);
+  const [error, setError] = useState("");
 
-  const price = service.price > 0 ? new Intl.NumberFormat("ru-RU").format(service.price) : null;
-  const durationLabels: Record<string, string> = {
-    "up-to-2-hours": "до 2 часов",
-    "half-day": "полдня",
-    "full-day": "полный день",
-    "multi-day": "несколько дней",
-  };
+  useEffect(() => {
+    let active = true;
+    marketplaceApi.product(slug)
+      .then((item) => active && setProduct(item))
+      .catch((requestError: unknown) => active && setError(requestError instanceof Error ? requestError.message : "Не удалось загрузить товар."));
+    return () => { active = false; };
+  }, [slug]);
+
+  if (error) return <div className={styles.productPage}><MarketplaceHeader currentPath="/catalog" /><main className={styles.productGrid}><section className={styles.productCopy}><h1>Товар недоступен</h1><p className={styles.productDescription}>{error}</p><Link className={styles.backLink} href="/catalog">Вернуться в каталог</Link></section></main></div>;
+  if (!product) return <div className={styles.productPage}><MarketplaceHeader currentPath="/catalog" /><main className={styles.productGrid}><p role="status">Загружаем товар…</p></main></div>;
 
   return (
     <div className={styles.productPage}>
       <MarketplaceHeader currentPath="/catalog" />
-      <div className={styles.productBreadcrumbs}>
-        <MarketplaceBreadcrumbs
-          items={[
-            { label: "Каталог", href: "/catalog" },
-            { label: service.title },
-          ]}
-        />
-      </div>
-      <div className={styles.productGrid}>
-        <div className={styles.productMedia}>
-          <Image
-            alt={service.title}
-            fill
-            priority
-            sizes="(max-width: 760px) 100vw, 55vw"
-            src={sitePath(service.imagePath)}
-          />
-        </div>
+      <div className={styles.productBreadcrumbs}><MarketplaceBreadcrumbs items={[{ label: "Каталог", href: "/catalog" }, { label: product.title }]} /></div>
+      <main className={styles.productGrid}>
+        <div aria-label={product.title} className={styles.productMedia} role="img" style={product.imageUrl ? { backgroundImage: `url(${JSON.stringify(product.imageUrl)})`, backgroundPosition: "center", backgroundSize: "cover" } : undefined} />
         <article className={styles.productCopy}>
-          <p className={styles.productEyebrow}>{service.catalogSection}</p>
-          <h1>{service.title}</h1>
-          <p className={styles.productDescription}>{service.description}</p>
-          <dl className={styles.productMeta}>
-            <div><dt>Формат</dt><dd>{service.deliveryMethod}</dd></div>
-            <div><dt>Срок</dt><dd>{service.duration ? durationLabels[service.duration] ?? service.duration : "по запросу"}</dd></div>
-            <div><dt>В стоимость входит</dt><dd>{service.included.join(" · ")}</dd></div>
-          </dl>
-          <div className={styles.productPurchase}>
-            <div>
-              <span>Цена</span>
-              <strong>{service.priceLabel ?? (price ? `от ${price} ₽` : "Цена по запросу")}</strong>
-            </div>
-            <ProductActions serviceId={service.id} serviceTitle={service.title} />
-          </div>
+          <p className={styles.productEyebrow}>{typeLabel(product.type)}</p>
+          <h1>{product.title}</h1>
+          <p className={styles.productDescription}>{product.description}</p>
+          <dl className={styles.productMeta}><div><dt>Формат</dt><dd>{typeLabel(product.type)}</dd></div><div><dt>Оформление</dt><dd>{product.type === "booking" ? "Заявка без оплаты на сайте" : "Оплата через Arc Pay"}</dd></div></dl>
+          <div className={styles.productPurchase}><div><span>Цена</span><strong>{priceLabel(product)}</strong></div><ProductActions productSlug={product.slug} productType={product.type} /></div>
           <Link className={styles.backLink} href="/catalog">Вернуться в каталог</Link>
         </article>
-      </div>
+      </main>
     </div>
   );
 }

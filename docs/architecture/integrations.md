@@ -44,3 +44,8 @@ Webhook URL — секрет worker-а. Slack получает минималь�
 ## Переменные окружения
 
 Имена окончательно утвердить при выборе runtime, но все агенты должны ожидать отдельные server-only секреты: `DATABASE_URL`, session/auth secret, Arc API credentials и webhook secret, `RESEND_API_KEY`, `RESEND_FROM`, `SLACK_WEBHOOK_URL`. Никакой из них не имеет префикса публичной переменной frontend и не попадает в `NEXT_PUBLIC_*`.
+
+`WEB_APP_ORIGIN` — не секрет, но обязательная серверная allowlist-настройка для
+browser frontend: API принимает credentialed CORS-запросы только от этого exact
+origin. `NEXT_PUBLIC_API_BASE_URL` — единственная публичная переменная витрины;
+она содержит адрес API и не может содержать ключи, webhook URL или иные секреты.

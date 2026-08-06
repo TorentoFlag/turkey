@@ -15,6 +15,7 @@ describe('GET /health', () => {
     logLevel: process.env.LOG_LEVEL,
     nodeEnv: process.env.NODE_ENV,
     port: process.env.PORT,
+    webAppOrigin: process.env.WEB_APP_ORIGIN,
   };
   let app: NestFastifyApplication | undefined;
   let appModule: Type<unknown>;
@@ -29,6 +30,7 @@ describe('GET /health', () => {
       .replace(/^postgres:/, 'postgresql:');
     process.env.LOG_LEVEL = 'warn';
     process.env.ADMIN_API_KEY = 'test-static-admin-key';
+    process.env.WEB_APP_ORIGIN = 'http://localhost:3000';
 
     ({ AppModule: appModule } = await import('../src/app.module.js'));
   });
@@ -46,6 +48,7 @@ describe('GET /health', () => {
     restoreEnvironment('LOG_LEVEL', previousEnv.logLevel);
     restoreEnvironment('NODE_ENV', previousEnv.nodeEnv);
     restoreEnvironment('PORT', previousEnv.port);
+    restoreEnvironment('WEB_APP_ORIGIN', previousEnv.webAppOrigin);
   });
 
   it('returns readiness and preserves a non-empty request ID when PostgreSQL responds', async () => {
@@ -115,6 +118,36 @@ describe('GET /health', () => {
     expect(response.headers['x-request-id']).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
     );
+  });
+
+  it('accepts credentialed browser requests only from the configured web origin', async () => {
+    const { createApiApp } = await import('../src/common/app-factory.js');
+    app = await createApiApp(appModule);
+    await ready(app);
+
+    const allowed = await app.inject({
+      method: 'OPTIONS',
+      url: '/v1/me',
+      headers: {
+        origin: 'http://localhost:3000',
+        'access-control-request-method': 'GET',
+      },
+    });
+    const denied = await app.inject({
+      method: 'OPTIONS',
+      url: '/v1/me',
+      headers: {
+        origin: 'https://untrusted.example.test',
+        'access-control-request-method': 'GET',
+      },
+    });
+
+    expect(allowed.statusCode).toBe(204);
+    expect(allowed.headers['access-control-allow-origin']).toBe(
+      'http://localhost:3000',
+    );
+    expect(allowed.headers['access-control-allow-credentials']).toBe('true');
+    expect(denied.headers['access-control-allow-origin']).toBeUndefined();
   });
 });
 

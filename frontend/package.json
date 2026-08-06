@@ -5,13 +5,12 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "postbuild": "node scripts/prepare-github-pages.mjs",
     "start": "next start",
     "lint": "eslint",
     "prepare:home-assets": "node scripts/prepare-home-assets.mjs",
     "typecheck": "tsc --noEmit",
     "verify:home": "node scripts/verify-home.mjs",
-    "verify:marketplace": "node scripts/verify-marketplace-foundation.mjs",
+    "verify:marketplace": "node scripts/verify-marketplace-api.mjs",
     "verify:marketplace:audit": "ALLOW_HOMEPAGE_AUDIT_CHANGES=1 node scripts/verify-marketplace-foundation.mjs"
   },
   "dependencies": {

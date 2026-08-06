@@ -7,8 +7,8 @@
     "node": ">=24 <25"
   },
   "scripts": {
-    "dev": "tsx watch src/main.ts",
-    "dev:worker": "tsx watch src/worker.ts",
+    "dev": "npm run build && node scripts/dev.mjs",
+    "dev:worker": "npm run build && node scripts/dev.mjs worker",
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/main.js",
     "start:worker": "node dist/worker.js",

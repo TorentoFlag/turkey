@@ -3,8 +3,6 @@ import Link from "next/link";
 
 import { CatalogBrowser } from "@/components/marketplace/CatalogBrowser";
 
-export const dynamic = "force-static";
-
 export default function SearchPage() {
   return (
     <>
@@ -14,7 +12,7 @@ export default function SearchPage() {
         <Link href="/catalog">Начать путешествие</Link>
       </section>
       <Suspense fallback={<p role="status">Загружаем каталог…</p>}>
-        <CatalogBrowser initialFilters={{}} />
+        <CatalogBrowser />
       </Suspense>
     </>
   );

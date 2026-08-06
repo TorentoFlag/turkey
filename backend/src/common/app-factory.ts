@@ -4,6 +4,8 @@ import {
   FastifyAdapter,
   type NestFastifyApplication,
 } from '@nestjs/platform-fastify';
+import { ConfigService } from '@nestjs/config';
+import type { AppEnv } from '../config/env.js';
 import { registerRequestContext } from './request-context.js';
 
 export async function createApiApp(
@@ -38,6 +40,18 @@ export async function createApiApp(
   );
 
   registerRequestContext(app);
+  const config = app.get(ConfigService<AppEnv, true>);
+  const webAppOrigin = config.get('WEB_APP_ORIGIN', { infer: true });
+
+  if (webAppOrigin) {
+    app.enableCors({
+      origin: (origin, callback) => {
+        callback(null, origin === webAppOrigin);
+      },
+      credentials: true,
+      methods: ['GET', 'POST', 'PATCH'],
+    });
+  }
   app.enableShutdownHooks();
 
   return app;

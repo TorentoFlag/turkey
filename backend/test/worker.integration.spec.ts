@@ -311,6 +311,7 @@ describe('outbox worker foundation', () => {
       .values({
         userId: user!.id,
         productId: product!.id,
+        idempotencyKey: randomUUID(),
         productTitle: product!.title,
         productType: product!.type,
         email: 'guest-booking@example.test',

@@ -12,10 +12,11 @@ export class OrdersController {
   @Post('orders')
   async create(
     @Headers('cookie') cookie: string | undefined,
+    @Headers('idempotency-key') idempotencyKey: string | undefined,
     @Body() body: unknown,
   ) {
     const user = await this.auth.getCurrentUser(readSessionCookie(cookie));
-    return this.orders.create(user, body);
+    return this.orders.create(user, body, idempotencyKey);
   }
 
   @Get('me/orders')

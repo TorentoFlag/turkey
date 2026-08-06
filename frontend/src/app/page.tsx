@@ -10,7 +10,6 @@ import { ManifestoCards } from "@/components/home/ManifestoCards";
 import { RevealObserver } from "@/components/home/RevealObserver";
 import { siteConfig } from "@/config/site";
 import { affordableItems, directionScenes, heroFragments } from "@/data/home";
-import { marketplaceCategories } from "@/data/marketplace";
 import { sitePath } from "@/lib/sitePath";
 
 const brandName = siteConfig.publicBrandName ?? "Türkiye";
@@ -153,8 +152,8 @@ export default function HomePage() {
             </div>
           </div>
           <div className="service-index">
-            {services.map(({ name, place, price, href }, index) => (
-              <a href={sitePath(href)} key={name} data-reveal>
+            {services.map(({ name, place, price }, index) => (
+              <a href={sitePath("/catalog")} key={name} data-reveal>
                 <span className="service-number">0{index + 1}</span>
                 <span className="service-name">{name}</span>
                 <span className="service-place">{place}</span>
@@ -176,8 +175,8 @@ export default function HomePage() {
             <h2>Полезные вещи, которые лучше купить заранее</h2>
           </div>
           <div className="affordable-list">
-            {affordableItems.map(({ name, price, slug }, index) => (
-              <a href={sitePath(`/services/${slug}`)} key={name} data-reveal data-reveal-step={String((index % 4) + 1)}>
+            {affordableItems.map(({ name, price }, index) => (
+              <a href={sitePath("/catalog")} key={name} data-reveal data-reveal-step={String((index % 4) + 1)}>
                 <span>{String(index + 1).padStart(2, "0")}</span>
                 <strong>{name}</strong>
                 <b>{price}</b>
@@ -286,30 +285,18 @@ export default function HomePage() {
           <Image alt="Faro" height={68} src={sitePath("/faro-logo.svg")} width={161} />
         </div>
         <div className="footer-grid">
-    <div className="footer-category-group" data-reveal>
-      <span>Категории</span>
-      <div className="footer-category-columns">
-        <nav aria-label="Категории каталога, первая колонка">
-          {marketplaceCategories.slice(0, Math.ceil(marketplaceCategories.length / 2)).map((category) => (
-            <a href={sitePath(`/catalog?category=${category.id}`)} key={category.id}>
-              {category.name}
-            </a>
-          ))}
-        </nav>
-        <nav aria-label="Категории каталога, вторая колонка">
-          {marketplaceCategories.slice(Math.ceil(marketplaceCategories.length / 2)).map((category) => (
-            <a href={sitePath(`/catalog?category=${category.id}`)} key={category.id}>
-              {category.name}
-            </a>
-          ))}
-        </nav>
-      </div>
-    </div>
+          <div className="footer-category-group" data-reveal>
+            <span>Каталог</span>
+            <div className="footer-category-columns">
+              <nav aria-label="Каталог товаров и услуг">
+                <a href={sitePath("/catalog")}>Все товары и услуги</a>
+              </nav>
+            </div>
+          </div>
           <nav aria-label="Сервис" data-reveal>
             <span>Сервис</span>
             <a href={sitePath("/catalog")}>Каталог</a>
             <a href={sitePath("/account/")}>Личный кабинет</a>
-            <a href={sitePath("/checkout")}>Корзина</a>
             <a href={sitePath("/search")}>Поиск</a>
           </nav>
           <nav aria-label="Информация о сервисе" data-reveal>

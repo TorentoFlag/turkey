@@ -1,121 +1,76 @@
 "use client";
 
-import { FormEvent, useSyncExternalStore, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
+
+import { MarketplaceApiError, marketplaceApi } from "@/lib/marketplace/api";
 
 import { AccountOrders } from "./AccountOrders";
 import styles from "./account.module.css";
 
-const ACCOUNT_STORAGE_KEY = "faro-account";
-const PROFILE_STORAGE_KEY = "faro-account-profile";
-
-type Account = { email: string; name: string };
-type Profile = Account & { password: string };
-
-function readStorage(key: string) {
-  try {
-    return window.localStorage.getItem(key);
-  } catch {
-    return null;
-  }
-}
-
-function writeStorage(key: string, value: string) {
-  try {
-    window.localStorage.setItem(key, value);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function removeStorage(key: string) {
-  try {
-    window.localStorage.removeItem(key);
-  } catch {
-    // Storage can be unavailable in private browsing or restricted contexts.
-  }
-}
-
-function readAccount(): Account | null {
-  const raw = readStorage(ACCOUNT_STORAGE_KEY);
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw) as Account;
-  } catch {
-    removeStorage(ACCOUNT_STORAGE_KEY);
-    return null;
-  }
-}
-
-function subscribeToAccount(callback: () => void) {
-  window.addEventListener("faro-account-updated", callback);
-  return () => window.removeEventListener("faro-account-updated", callback);
-}
-
-function readProfile(): Profile | null {
-  const raw = readStorage(PROFILE_STORAGE_KEY);
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw) as Profile;
-  } catch {
-    removeStorage(PROFILE_STORAGE_KEY);
-    return null;
-  }
-}
-
 export function AccountGate() {
-  const account = useSyncExternalStore(subscribeToAccount, readAccount, () => null);
+  const [account, setAccount] = useState<{ email: string } | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const [mode, setMode] = useState<"login" | "register">("login");
   const [email, setEmail] = useState("");
-  const [name, setName] = useState("");
   const [password, setPassword] = useState("");
   const [passwordConfirmation, setPasswordConfirmation] = useState("");
   const [error, setError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  function submit(event: FormEvent<HTMLFormElement>) {
+  useEffect(() => {
+    let active = true;
+    marketplaceApi.me()
+      .then((current) => active && setAccount(current))
+      .catch((requestError: unknown) => {
+        if (active && !(requestError instanceof MarketplaceApiError && requestError.status === 401)) {
+          setError("Не удалось проверить сессию. Попробуйте обновить страницу.");
+        }
+      })
+      .finally(() => active && setIsLoading(false));
+    return () => { active = false; };
+  }, []);
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (password.length < 6) {
-      setError("Пароль должен содержать минимум 6 символов.");
+    if (password.length < 12) {
+      setError("Пароль должен содержать минимум 12 символов.");
       return;
     }
-    if (mode === "register") {
-      if (!name.trim()) {
-        setError("Введите имя.");
-        return;
-      }
-      if (password !== passwordConfirmation) {
-        setError("Пароли не совпадают.");
-        return;
-      }
-      const profile = { email, name: name.trim(), password };
-      if (!writeStorage(PROFILE_STORAGE_KEY, JSON.stringify(profile))) {
-        setError("Не удалось сохранить регистрацию в этом браузере.");
-        return;
-      }
-    }
-    const profile = readProfile();
-    if (!profile || profile.email !== email || profile.password !== password) {
-      setError("Проверьте email и пароль или зарегистрируйтесь.");
+    if (mode === "register" && password !== passwordConfirmation) {
+      setError("Пароли не совпадают.");
       return;
     }
-    const nextAccount = { email: profile.email, name: profile.name };
-    if (!writeStorage(ACCOUNT_STORAGE_KEY, JSON.stringify(nextAccount))) {
-      setError("Не удалось сохранить вход в этом браузере.");
-      return;
-    }
-    window.dispatchEvent(new Event("faro-account-updated"));
+
+    setIsSubmitting(true);
     setError("");
+    try {
+      const current = mode === "login"
+        ? await marketplaceApi.login({ email, password })
+        : await marketplaceApi.register({ email, password });
+      setAccount(current);
+      setPassword("");
+      setPasswordConfirmation("");
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Не удалось войти в аккаунт.");
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
-  function signOut() {
-    removeStorage(ACCOUNT_STORAGE_KEY);
-    window.dispatchEvent(new Event("faro-account-updated"));
-    setEmail("");
-    setName("");
-    setPassword("");
-    setPasswordConfirmation("");
-    setMode("login");
+  async function signOut() {
+    setIsSubmitting(true);
+    try {
+      await marketplaceApi.logout();
+      setAccount(null);
+      setEmail("");
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Не удалось завершить сессию.");
+    } finally {
+      setIsSubmitting(false);
+    }
   }
+
+  if (isLoading) return <p role="status">Проверяем сессию…</p>;
 
   if (!account) {
     return (
@@ -126,36 +81,23 @@ export function AccountGate() {
             <button aria-selected={mode === "register"} onClick={() => { setMode("register"); setError(""); }} role="tab" type="button">Регистрация</button>
           </div>
           <h2 id="account-login-title">{mode === "login" ? "С возвращением" : "Ваше место для поездок"}</h2>
-          <p>Сохраняйте заказы, инструкции и всё необходимое для поездки в одном кабинете.</p>
+          <p>Сохраняйте заказы и всё необходимое для поездки в одном кабинете.</p>
           <form onSubmit={submit}>
-            {mode === "register" && <label><span>Имя</span><input autoComplete="name" required value={name} onChange={(event) => setName(event.target.value)} /></label>}
-            <label><span>Email</span><input autoComplete="email" required type="email" value={email} onChange={(event) => setEmail(event.target.value)} /></label>
-            <label><span>Пароль</span><input autoComplete={mode === "login" ? "current-password" : "new-password"} minLength={6} required type="password" value={password} onChange={(event) => setPassword(event.target.value)} /></label>
-            {mode === "register" && <label><span>Повторите пароль</span><input autoComplete="new-password" minLength={6} required type="password" value={passwordConfirmation} onChange={(event) => setPasswordConfirmation(event.target.value)} /></label>}
+            <label><span>Email</span><input autoComplete="email" disabled={isSubmitting} required type="email" value={email} onChange={(event) => setEmail(event.target.value)} /></label>
+            <label><span>Пароль</span><input autoComplete={mode === "login" ? "current-password" : "new-password"} disabled={isSubmitting} minLength={12} required type="password" value={password} onChange={(event) => setPassword(event.target.value)} /></label>
+            {mode === "register" && <label><span>Повторите пароль</span><input autoComplete="new-password" disabled={isSubmitting} minLength={12} required type="password" value={passwordConfirmation} onChange={(event) => setPasswordConfirmation(event.target.value)} /></label>}
             {error && <p className={styles.loginError}>{error}</p>}
-            <button type="submit">{mode === "login" ? "Войти" : "Зарегистрироваться"}</button>
+            <button disabled={isSubmitting} type="submit">{isSubmitting ? "Подождите…" : mode === "login" ? "Войти" : "Зарегистрироваться"}</button>
           </form>
         </section>
         <aside className={styles.accountAside}>
           <p className={styles.eyebrow}>Всё под рукой</p>
           <h2>Поездка начинается с ясности.</h2>
-          <ul>
-            <li><span>01</span>Номер заказа и статус</li>
-            <li><span>02</span>Даты, маршруты и контакты</li>
-            <li><span>03</span>Инструкции и канал доставки</li>
-          </ul>
+          <ul><li><span>01</span>История заявок</li><li><span>02</span>Статус обработки</li><li><span>03</span>Безопасная серверная сессия</li></ul>
         </aside>
       </div>
     );
   }
 
-  return (
-    <div className={styles.accountContent}>
-      <div className={styles.accountToolbar}>
-        <p>Ваш профиль · <strong>{account.email}</strong></p>
-        <button onClick={signOut} type="button">Выйти</button>
-      </div>
-      <AccountOrders />
-    </div>
-  );
+  return <div className={styles.accountContent}><div className={styles.accountToolbar}><p>Ваш профиль · <strong>{account.email}</strong></p><button disabled={isSubmitting} onClick={signOut} type="button">Выйти</button></div><AccountOrders /></div>;
 }

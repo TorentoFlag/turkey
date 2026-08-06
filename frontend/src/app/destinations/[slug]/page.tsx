@@ -3,9 +3,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { MarketplaceBreadcrumbs } from "@/components/marketplace/MarketplaceBreadcrumbs";
-import { ServiceCard } from "@/components/marketplace/ServiceCard";
 import styles from "@/components/marketplace/destination.module.css";
-import { marketplaceDestinations, marketplaceServices } from "@/data/marketplace";
+import { marketplaceDestinations } from "@/data/marketplace";
 import { sitePath } from "@/lib/sitePath";
 
 type DestinationPageProps = {
@@ -22,8 +21,7 @@ export default async function DestinationPage({ params }: DestinationPageProps) 
 
   if (!destination) notFound();
 
-  const services = marketplaceServices.filter((service) => service.destinationId === destination.id);
-  const catalogHref = `/catalog?destination=${encodeURIComponent(destination.id)}`;
+  const catalogHref = "/catalog";
 
   return (
     <section className={styles.destinationDetail}>
@@ -40,7 +38,7 @@ export default async function DestinationPage({ params }: DestinationPageProps) 
           <h2>{destination.name}</h2>
           <div>
             <p>{destination.description}</p>
-            <p>Доступно услуг: {services.length}.</p>
+            <p>Актуальные товары и услуги доступны в общем каталоге.</p>
           </div>
         </div>
         <div className={styles.destinationHeroImage}>
@@ -65,15 +63,9 @@ export default async function DestinationPage({ params }: DestinationPageProps) 
           </Link>
         </header>
 
-        {services.length > 0 ? (
-          <div className={styles.destinationServiceList}>
-            {services.map((service) => <ServiceCard key={service.id} service={service} />)}
-          </div>
-        ) : (
-          <p className={styles.emptyDestinationServices}>
-            Для этого направления пока нет доступных услуг. Посмотрите другие варианты в общем каталоге.
-          </p>
-        )}
+        <p className={styles.emptyDestinationServices}>
+          Каталог заполняется через админку. Выберите актуальный товар или услугу в общем каталоге.
+        </p>
       </div>
     </section>
   );

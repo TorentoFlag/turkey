@@ -566,10 +566,13 @@ describe('admin catalog API', () => {
     });
     const sessionCookie = getSessionCookie(registration);
 
-    const response = await app.inject({
+    const request = {
       method: 'POST',
       url: '/v1/orders',
-      headers: { cookie: sessionCookie },
+      headers: {
+        cookie: sessionCookie,
+        'idempotency-key': '018f71c1-4afe-7b1d-9f55-123456789a01',
+      },
       payload: {
         productId: product.id,
         email: 'guest@example.test',
@@ -577,7 +580,9 @@ describe('admin catalog API', () => {
         bookingStartDate: '2026-09-10',
         bookingEndDate: '2026-09-12',
       },
-    });
+    } as const;
+    const response = await app.inject(request);
+    const repeated = await app.inject(request);
 
     expect(response.statusCode).toBe(201);
     expect(response.json()).toMatchObject({
@@ -596,6 +601,13 @@ describe('admin catalog API', () => {
       isProcessed: false,
     });
     const orderId = response.json<{ id: string }>().id;
+    expect(repeated.statusCode).toBe(201);
+    expect(repeated.json<{ id: string }>().id).toBe(orderId);
+    expect(
+      await pool.query('select id from orders where idempotency_key = $1', [
+        request.headers['idempotency-key'],
+      ]),
+    ).toMatchObject({ rows: [{ id: orderId }] });
     expect(
       await pool.query(
         'select type, aggregate_id, idempotency_key from outbox_events where aggregate_id = $1',
@@ -1117,6 +1129,18 @@ describe('admin catalog API', () => {
       state: 'succeeded',
       providerRefundId: '018f71c1-4afe-7b1d-9f55-123456789ac0',
     });
+    const history = await app.inject({
+      method: 'GET',
+      url: '/v1/me/orders',
+      headers: { cookie },
+    });
+    expect(history.statusCode).toBe(200);
+    expect(history.json()).toEqual([
+      expect.objectContaining({
+        id: orderId,
+        refund: { state: 'succeeded' },
+      }),
+    ]);
     expect(fetchMock).toHaveBeenLastCalledWith(
       'https://arc.example.test/v1/payments/018f71c1-4afe-7b1d-9f55-123456789abf/refunds',
       expect.objectContaining({

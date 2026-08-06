@@ -22,6 +22,7 @@ export const orders = pgTable(
     productId: uuid('product_id')
       .references(() => products.id)
       .notNull(),
+    idempotencyKey: uuid('idempotency_key').notNull().unique(),
     productTitle: text('product_title').notNull(),
     productType: productType('product_type').notNull(),
     priceMinor: integer('price_minor'),

@@ -10,8 +10,6 @@ const nextConfig: NextConfig = {
   images: {
     unoptimized: true,
   },
-  output: "export",
-  trailingSlash: true,
   turbopack: {
     root: path.resolve(__dirname),
   },

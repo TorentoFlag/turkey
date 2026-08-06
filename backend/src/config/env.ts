@@ -23,6 +23,7 @@ const envSchema = z.object({
   RESEND_API_KEY: z.string().trim().min(1).optional(),
   RESEND_FROM: z.string().trim().min(1).max(320).optional(),
   SLACK_WEBHOOK_URL: z.string().url().optional(),
+  WEB_APP_ORIGIN: z.string().url().optional(),
 });
 
 export type AppEnv = Readonly<z.output<typeof envSchema>>;

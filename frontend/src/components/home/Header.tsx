@@ -4,7 +4,6 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 
 import { sitePath } from "@/lib/sitePath";
-import { CartCount } from "@/components/marketplace/CartCount";
 import { ConnectedPillNav } from "./ConnectedPillNav";
 
 type HeaderProps = {
@@ -123,7 +122,6 @@ export function Header({ brandName }: HeaderProps) {
         <div className="header-main-cluster">
           <ConnectedPillNav items={headerItems} />
           <div className="header-tools">
-          <a className="header-commerce-link" href={sitePath("/checkout")}><span>Корзина</span><CartCount className="home-cart-count" /></a>
           <a className="header-commerce-link" href={sitePath("/account/")}>Личный кабинет</a>
           <span className="locale-switch" aria-label="Русский язык, рубли">
             RU⌄
@@ -187,10 +185,6 @@ export function Header({ brandName }: HeaderProps) {
                   <span>Поиск</span>
                   <span>Открыть</span>
                 </button>
-                <a href={sitePath("/checkout")} onClick={closePanel}>
-                  <span>Корзина <CartCount className="home-cart-count" /></span>
-                  <span>Открыть</span>
-                </a>
                 <a href={sitePath("/account/")} onClick={closePanel}>
                   <span>Личный кабинет</span>
                   <span>Открыть</span>

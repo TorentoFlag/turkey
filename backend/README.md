@@ -36,6 +36,10 @@ npm run db:migrate
 npm run dev
 ```
 
+The dev command compiles TypeScript and watches the compiled API. This keeps
+Nest dependency metadata identical to production instead of relying on a
+transpiler-only runtime.
+
 In a second terminal, verify readiness:
 
 ```sh

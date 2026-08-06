@@ -3,7 +3,8 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { desc, eq } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
+import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { DatabaseService } from '../../database/database.service.js';
 import {
@@ -49,6 +50,9 @@ export type OrderResponse = Readonly<{
   bookingStartDate: string | null;
   bookingEndDate: string | null;
   isProcessed: boolean;
+  refund: Readonly<{
+    state: 'processing' | 'succeeded' | 'failed';
+  }> | null;
   createdAt: Date;
 }>;
 
@@ -62,6 +66,7 @@ export class OrdersService {
   async create(
     user: AuthenticatedUser,
     input: unknown,
+    idempotencyKey?: string,
   ): Promise<OrderResponse> {
     const parsed = createOrderSchema.safeParse(input);
 
@@ -70,6 +75,12 @@ export class OrdersService {
     }
 
     const command = parsed.data;
+    const key = parseIdempotencyKey(idempotencyKey);
+    const existing = await this.findOrderByIdempotencyKey(user.id, key);
+
+    if (existing) {
+      return toOrderResponse(existing);
+    }
     const product = await this.catalog.getActiveProductForOrder(
       command.productId,
     );
@@ -105,6 +116,7 @@ export class OrdersService {
         .values({
           userId: user.id,
           productId: product.id,
+          idempotencyKey: key,
           productTitle: product.title,
           productType: product.type,
           priceMinor: product.priceMinor,
@@ -116,11 +128,23 @@ export class OrdersService {
           bookingStartDate: booking ? command.bookingStartDate : null,
           bookingEndDate: booking ? command.bookingEndDate : null,
         })
+        .onConflictDoNothing({ target: orders.idempotencyKey })
         .returning();
       const created = inserted[0];
 
       if (!created) {
-        throw new Error('Order insertion failed.');
+        const repeated = await transaction
+          .select()
+          .from(orders)
+          .where(
+            and(eq(orders.userId, user.id), eq(orders.idempotencyKey, key)),
+          )
+          .limit(1);
+        const existingOrder = repeated[0];
+        if (!existingOrder) {
+          throw new Error('Order idempotency key collision.');
+        }
+        return existingOrder;
       }
 
       if (booking) {
@@ -140,12 +164,38 @@ export class OrdersService {
 
   async listForUser(user: AuthenticatedUser): Promise<OrderResponse[]> {
     const records = await this.database.db
-      .select()
+      .select({
+        order: orders,
+        refund: { state: refunds.state },
+      })
       .from(orders)
+      .leftJoin(payments, eq(payments.orderId, orders.id))
+      .leftJoin(refunds, eq(refunds.paymentId, payments.id))
       .where(eq(orders.userId, user.id))
       .orderBy(desc(orders.createdAt), desc(orders.id));
 
-    return records.map(toOrderResponse);
+    return records.map(({ order, refund }) => ({
+      ...toOrderResponse(order),
+      refund: refund?.state ? { state: refund.state } : null,
+    }));
+  }
+
+  private async findOrderByIdempotencyKey(
+    userId: string,
+    idempotencyKey: string,
+  ): Promise<Order | undefined> {
+    const records = await this.database.db
+      .select()
+      .from(orders)
+      .where(
+        and(
+          eq(orders.userId, userId),
+          eq(orders.idempotencyKey, idempotencyKey),
+        ),
+      )
+      .limit(1);
+
+    return records[0];
   }
 
   async listForAdmin() {
@@ -245,6 +295,16 @@ function toOrderResponse(order: Order): OrderResponse {
     bookingStartDate: order.bookingStartDate,
     bookingEndDate: order.bookingEndDate,
     isProcessed: order.isProcessed,
+    refund: null,
     createdAt: order.createdAt,
   };
+}
+
+function parseIdempotencyKey(value: string | undefined): string {
+  if (value === undefined) return randomUUID();
+  const parsed = z.uuid().safeParse(value.trim());
+  if (!parsed.success) {
+    throw new BadRequestException('Invalid idempotency key.');
+  }
+  return parsed.data;
 }
