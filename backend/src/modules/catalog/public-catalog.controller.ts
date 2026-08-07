@@ -15,6 +15,11 @@ export class PublicCatalogController {
     return this.catalog.listPublicProducts(categorySlug);
   }
 
+  @Get('catalog-health')
+  getCatalogHealth() {
+    return this.catalog.getPublicCatalogHealth();
+  }
+
   @Get('products/:slug')
   getProduct(@Param('slug') slug: string) {
     return this.catalog.getPublicProduct(slug);

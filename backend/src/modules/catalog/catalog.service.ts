@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { and, asc, eq, inArray, ne } from 'drizzle-orm';
+import { and, asc, count, eq, inArray, ne } from 'drizzle-orm';
 import { z } from 'zod';
 import { DatabaseService } from '../../database/database.service.js';
 import {
@@ -293,6 +293,16 @@ export class CatalogService {
       .orderBy(asc(products.sortOrder), asc(products.title));
 
     return records.map(({ product }) => toPublicProduct(product));
+  }
+
+  async getPublicCatalogHealth(): Promise<Readonly<{ total: number }>> {
+    const records = await this.database.db
+      .select({ total: count() })
+      .from(products)
+      .innerJoin(categories, eq(products.categoryId, categories.id))
+      .where(and(eq(products.isActive, true), eq(categories.isActive, true)));
+
+    return { total: records[0]?.total ?? 0 };
   }
 
   async getPublicProduct(slug: string): Promise<PublicProduct> {
