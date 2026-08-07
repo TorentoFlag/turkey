@@ -50,4 +50,12 @@ describe('database migrations', () => {
       { table_name: 'users' },
     ]);
   });
+
+  it('creates the scenario marker required by the orders schema', async () => {
+    const result = await pool.query<{ column_name: string }>(
+      "select column_name from information_schema.columns where table_schema = 'public' and table_name = 'orders' and column_name = 'is_scenario'",
+    );
+
+    expect(result.rows).toEqual([{ column_name: 'is_scenario' }]);
+  });
 });
