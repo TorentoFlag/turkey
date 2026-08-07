@@ -12,6 +12,12 @@ The production server must put an HTTPS reverse proxy in front of the two
 loopback-bound ports. Publish the storefront origin and the Arc webhook URL,
 not PostgreSQL or the raw container ports.
 
+Current production routing is:
+
+- storefront: `https://turkeyplanners.com`;
+- API: `https://turkeyplanners.com/api`;
+- Arc webhook: `https://turkeyplanners.com/api/v1/webhooks/arc`.
+
 ## Operator-only environment
 
 Keep the environment file outside the repository with restrictive filesystem
@@ -62,6 +68,20 @@ frontend are running; API and frontend healthchecks are healthy. Check the
 public HTTPS storefront and API health through the reverse proxy. Do not call
 Arc refund, send a real purchase, or register a real email address merely to
 test deployment.
+
+## Continuous deployment
+
+Pushes to `main` trigger `.github/workflows/deploy.yml`. The workflow has no
+provider credentials: it connects with a dedicated SSH key whose server-side
+entry is restricted to `/opt/turkiye/scripts/deploy.sh`. The script uses the
+server's read-only GitHub deploy key, performs `git pull --ff-only origin main`,
+validates Compose and rebuilds the stack with `/etc/turkiye/turkiye.env`.
+
+GitHub repository secrets required for this workflow are
+`TURKIYE_DEPLOY_HOST`, `TURKIYE_DEPLOY_KNOWN_HOSTS` and
+`TURKIYE_DEPLOY_SSH_KEY`. They are deployment transport credentials only;
+Arc, Resend, Slack, database and admin secrets must never be GitHub Actions
+secrets or workflow environment variables.
 
 ## Post-launch controls
 
