@@ -33,6 +33,7 @@ export const orders = pgTable(
     bookingStartDate: date('booking_start_date', { mode: 'string' }),
     bookingEndDate: date('booking_end_date', { mode: 'string' }),
     isProcessed: boolean('is_processed').default(false).notNull(),
+    isScenario: boolean('is_scenario').default(false).notNull(),
     createdAt: timestamp('created_at', {
       mode: 'date',
       withTimezone: true,

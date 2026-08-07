@@ -6,6 +6,7 @@ import { CatalogModule } from '../catalog/catalog.module.js';
 import { PaymentsModule } from '../payments/payments.module.js';
 import { AdminOrdersController } from './admin-orders.controller.js';
 import { OrdersController } from './orders.controller.js';
+import { ScenarioOrdersController } from './scenario-orders.controller.js';
 import { OrdersService } from './orders.service.js';
 
 @Module({
@@ -16,7 +17,7 @@ import { OrdersService } from './orders.service.js';
     CatalogModule,
     PaymentsModule,
   ],
-  controllers: [AdminOrdersController, OrdersController],
+  controllers: [AdminOrdersController, OrdersController, ScenarioOrdersController],
   providers: [OrdersService],
 })
 export class OrdersModule {}

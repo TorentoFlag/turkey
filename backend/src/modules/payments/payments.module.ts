@@ -17,6 +17,6 @@ import { RefundsService } from './refunds.service.js';
     PaymentsService,
     RefundsService,
   ],
-  exports: [RefundsService],
+  exports: [RefundsService, PaymentsService],
 })
 export class PaymentsModule {}

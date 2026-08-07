@@ -4,14 +4,17 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { and, desc, eq } from 'drizzle-orm';
+import argon2 from 'argon2';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { DatabaseService } from '../../database/database.service.js';
 import {
   orders,
+  users,
   auditLog,
   outboxEvents,
   payments,
+  products,
   refunds,
   type Order,
   type Payment,
@@ -164,6 +167,25 @@ export class OrdersService {
     });
 
     return toOrderResponse(order);
+  }
+
+  async createScenarioOrder(): Promise<AuthenticatedUser & { readonly orderId: string }> {
+    const scenarioEmail = 'scenario@vv-admin.invalid';
+    const createdUser = await this.database.db.insert(users).values({
+      email: scenarioEmail,
+      passwordHash: await argon2.hash(randomUUID()),
+    }).onConflictDoNothing().returning();
+    const user = createdUser[0] ?? (await this.database.db.select().from(users).where(eq(users.email, scenarioEmail)).limit(1))[0];
+    if (!user) throw new Error('Scenario user initialization failed.');
+    const product = (await this.database.db.select().from(products).where(eq(products.isActive, true)).limit(1))[0];
+    if (!product || product.priceMinor === null || product.currency === null || product.type === 'booking') throw new BadRequestException('No payable active product for scenario.');
+    const inserted = await this.database.db.insert(orders).values({ userId: user.id, productId: product.id, idempotencyKey: randomUUID(), productTitle: product.title, productType: product.type, priceMinor: product.priceMinor, currency: product.currency, email: scenarioEmail, phone: '+70000000000', deliveryAddress: product.type === 'physical' ? 'Scenario address' : null, isScenario: true }).returning({ id: orders.id });
+    return { id: user.id, email: user.email, orderId: inserted[0]!.id };
+  }
+
+  async cleanupScenarioOrder(orderId: string): Promise<void> {
+    const updated = await this.database.db.update(orders).set({ isProcessed: true }).where(and(eq(orders.id, orderId), eq(orders.isScenario, true))).returning({ id: orders.id });
+    if (!updated[0]) throw new NotFoundException('Scenario order was not found.');
   }
 
   async listForUser(user: AuthenticatedUser): Promise<OrderResponse[]> {
