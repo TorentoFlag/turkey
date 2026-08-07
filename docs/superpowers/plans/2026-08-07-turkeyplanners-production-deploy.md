@@ -22,28 +22,28 @@
 - Create on server: `/etc/turkiye/turkiye.env`, `/etc/nginx/sites-available/turkeyplanners.com`
 - Create on server: `/opt/turkiye`
 
-- [ ] Install Docker Compose, Nginx, Certbot and allow only SSH/HTTP/HTTPS through UFW.
-- [ ] Create root-only runtime environment containing generated database/admin secrets and supplied provider credentials.
-- [ ] Issue a Let's Encrypt certificate for `turkeyplanners.com`; proxy `/` and `/api/` to loopback container ports.
-- [ ] Verify HTTPS response and security headers without creating a customer/order.
+- [x] Install Docker Compose, Nginx, Certbot and allow only SSH/HTTP/HTTPS through UFW.
+- [x] Create root-only runtime environment containing generated database/admin secrets and supplied provider credentials.
+- [x] Issue a Let's Encrypt certificate for `turkeyplanners.com`; proxy `/` and `/api/` to loopback container ports.
+- [x] Verify HTTPS response and security headers without creating a customer/order.
 
 ### Task 2: Configure source access and initial deployment
 
 **Files:**
 - Create on server: `/root/.ssh/turkiye_github_deploy`, `/opt/turkiye/scripts/deploy.sh`
 
-- [ ] Add a read-only GitHub deploy key for this repository; clone current `main` into `/opt/turkiye`.
-- [ ] Create a server deploy script that checks out `origin/main` with fast-forward-only semantics and starts `compose.prod.yml` using the private environment file.
-- [ ] Run initial deployment and prove migrations complete, API/frontend healthchecks pass and HTTPS `/` plus `/api/health` return `200`.
+- [x] Add a read-only GitHub deploy key for this repository; clone current `main` into `/opt/turkiye`.
+- [x] Create a server deploy script that checks out `origin/main` with fast-forward-only semantics and starts `compose.prod.yml` using the private environment file.
+- [x] Run initial deployment and prove migrations complete, API/frontend healthchecks pass and HTTPS `/` plus `/api/health` return `200`.
 
 ### Task 3: Add GitHub Actions deployment trigger
 
 **Files:**
 - Create: `.github/workflows/deploy.yml`
 
-- [ ] Generate a distinct Action-to-server SSH key, install its public half on the server and store the private half plus pinned host key as GitHub repository secrets.
-- [ ] Add a concurrency-protected workflow for `push` to `main` and manual dispatch; it invokes only `/opt/turkiye/scripts/deploy.sh` over SSH.
-- [ ] Push the workflow, verify the triggered Actions run, and inspect server/runtime health after it completes.
+- [x] Generate a distinct Action-to-server SSH key, install its public half on the server and store the private half plus pinned host key as GitHub repository secrets.
+- [x] Add a concurrency-protected workflow for `push` to `main` and manual dispatch; it invokes only `/opt/turkiye/scripts/deploy.sh` over SSH.
+- [x] Push the workflow, verify the triggered Actions run, and inspect server/runtime health after it completes.
 
 ### Task 4: Closeout
 
@@ -51,5 +51,5 @@
 - Modify: `docs/development/production-runbook.md`
 - Modify: this plan
 
-- [ ] Record actual public endpoints and secret rotation/deploy operation without storing credentials.
-- [ ] Run relevant repository verification, inspect the diff for credentials, commit and push all repository changes.
+- [x] Record actual public endpoints and secret rotation/deploy operation without storing credentials.
+- [x] Run relevant repository verification, inspect the diff for credentials, commit and push all repository changes.
