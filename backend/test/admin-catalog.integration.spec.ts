@@ -1000,14 +1000,14 @@ describe('admin catalog API', () => {
     );
   });
 
-  it('creates one hosted checkout for the owner of a payable order', async () => {
+  it('creates one hosted checkout for the owner using an active H2H method', async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(
         Response.json([
           {
             method: 'bank_card',
-            payment_mode: 'redirect',
+            payment_mode: 'h2h',
             display_name: 'Card',
             is_active: true,
             supported_currencies: ['RUB'],
