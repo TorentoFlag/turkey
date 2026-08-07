@@ -18,3 +18,5 @@ git pull --ff-only origin main
 docker compose --env-file "$environment_file" -f compose.prod.yml config --quiet
 docker compose --env-file "$environment_file" -f compose.prod.yml up -d --build --remove-orphans
 docker compose --env-file "$environment_file" -f compose.prod.yml ps
+docker image prune -a -f
+docker builder prune -af
