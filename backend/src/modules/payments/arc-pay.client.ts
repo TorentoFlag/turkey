@@ -91,6 +91,7 @@ export class ArcPayClient {
       .filter(
         (method) =>
           method.is_active &&
+          method.method === 'sbp' &&
           (method.supported_currencies === undefined ||
             method.supported_currencies.includes(input.currency)),
       )

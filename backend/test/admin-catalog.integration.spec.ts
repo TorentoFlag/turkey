@@ -457,6 +457,17 @@ describe('admin catalog API', () => {
       ]),
     );
 
+    const catalogHealthResponse = await app.inject({
+      method: 'GET',
+      url: '/v1/public/catalog-health',
+    });
+
+    expect(catalogHealthResponse.statusCode).toBe(200);
+    expect(catalogHealthResponse.json()).toMatchObject({
+      total: expect.any(Number),
+    });
+    expect(catalogHealthResponse.json().total).toBeGreaterThanOrEqual(2);
+
     const productResponse = await app.inject({
       method: 'GET',
       url: '/v1/public/products/public-cappadocia-tour',
@@ -1000,11 +1011,18 @@ describe('admin catalog API', () => {
     );
   });
 
-  it('creates one hosted checkout for the owner using an active H2H method', async () => {
+  it('creates one hosted checkout using only the active SBP method', async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(
         Response.json([
+          {
+            method: 'sbp',
+            payment_mode: 'h2h',
+            display_name: 'SBP',
+            is_active: true,
+            supported_currencies: ['RUB'],
+          },
           {
             method: 'bank_card',
             payment_mode: 'h2h',
@@ -1093,6 +1111,7 @@ describe('admin catalog API', () => {
     );
     const checkoutRequest = fetchMock.mock.calls[1]?.[1];
     expect(JSON.parse(String(checkoutRequest?.body))).toMatchObject({
+      payment_methods: [{ method: 'sbp', payment_mode: 'h2h' }],
       success_url: `https://shop.example.test/checkout/return?order=${orderId}&result=success`,
       fail_url: `https://shop.example.test/checkout/return?order=${orderId}&result=failed`,
       cancel_url: `https://shop.example.test/checkout/return?order=${orderId}&result=cancelled`,
@@ -1105,9 +1124,9 @@ describe('admin catalog API', () => {
       .mockResolvedValueOnce(
         Response.json([
           {
-            method: 'bank_card',
-            payment_mode: 'redirect',
-            display_name: 'Card',
+            method: 'sbp',
+            payment_mode: 'h2h',
+            display_name: 'SBP',
             is_active: true,
             supported_currencies: ['RUB'],
           },
