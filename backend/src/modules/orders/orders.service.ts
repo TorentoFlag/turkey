@@ -184,8 +184,22 @@ export class OrdersService {
   }
 
   async cleanupScenarioOrder(orderId: string): Promise<void> {
-    const updated = await this.database.db.update(orders).set({ isProcessed: true }).where(and(eq(orders.id, orderId), eq(orders.isScenario, true))).returning({ id: orders.id });
-    if (!updated[0]) throw new NotFoundException('Scenario order was not found.');
+    await this.database.db.transaction(async (transaction) => {
+      const updated = await transaction
+        .update(orders)
+        .set({ isProcessed: true })
+        .where(and(eq(orders.id, orderId), eq(orders.isScenario, true)))
+        .returning({ id: orders.id });
+
+      if (!updated[0]) {
+        throw new NotFoundException('Scenario order was not found.');
+      }
+
+      await transaction
+        .update(payments)
+        .set({ state: 'failed', updatedAt: new Date() })
+        .where(and(eq(payments.orderId, orderId), eq(payments.state, 'pending')));
+    });
   }
 
   async listForUser(user: AuthenticatedUser): Promise<OrderResponse[]> {
