@@ -19,6 +19,11 @@ const checkoutSessionSchema = z.object({
   url: z.string().url(),
 });
 
+const arcPaymentSchema = z.object({
+  id: z.uuid(),
+  external_id: z.string().optional(),
+});
+
 const refundSchema = z.object({
   id: z.uuid(),
   payment_id: z.uuid(),
@@ -48,6 +53,11 @@ export type ArcCheckoutSession = Readonly<{
 export type ArcRefund = Readonly<{
   id: string;
   status: 'pending' | 'succeeded' | 'failed';
+}>;
+
+export type ArcPayment = Readonly<{
+  id: string;
+  externalId?: string;
 }>;
 
 @Injectable()
@@ -172,6 +182,30 @@ export class ArcPayClient {
     }
 
     return { id: refund.data.id, status: refund.data.status };
+  }
+
+  async getPayment(providerPaymentId: string): Promise<ArcPayment> {
+    const apiKey = this.config.get('ARC_SECRET_API_KEY', { infer: true });
+
+    if (!apiKey) {
+      throw new ServiceUnavailableException(
+        'Payments are temporarily unavailable.',
+      );
+    }
+
+    const response = await this.request(`payments/${providerPaymentId}`, {
+      headers: this.authorizationHeaders(apiKey),
+      method: 'GET',
+    });
+    const payment = arcPaymentSchema.safeParse(response);
+
+    if (!payment.success) {
+      throw new ServiceUnavailableException(
+        'Payments are temporarily unavailable.',
+      );
+    }
+
+    return { id: payment.data.id, externalId: payment.data.external_id };
   }
 
   private authorizationHeaders(apiKey: string): HeadersInit {

@@ -138,7 +138,9 @@ export class PaymentsService {
         readUuid(parsed.data.data, ['metadata', 'payment_id']) ??
         readUuid(parsed.data.data, ['payment', 'metadata', 'payment_id']);
       const providerPaymentId =
+        readUuid(parsed.data.data, ['payment_id']) ??
         readUuid(parsed.data.data, ['id']) ??
+        readUuid(parsed.data.data, ['payment', 'payment_id']) ??
         readUuid(parsed.data.data, ['payment', 'id']);
       const providerCheckoutId =
         readUuid(parsed.data.data, ['checkout_session_id']) ??
@@ -146,6 +148,21 @@ export class PaymentsService {
       const orderId =
         readUuid(parsed.data.data, ['external_id']) ??
         readUuid(parsed.data.data, ['payment', 'external_id']);
+      const directPayment = await this.findPaymentByDirectReferences({
+        paymentId,
+        providerCheckoutId,
+        providerPaymentId,
+      });
+      const providerOrderId =
+        !directPayment && providerPaymentId
+          ? readUuid(
+              {
+                externalId: (await this.arcPay.getPayment(providerPaymentId))
+                  .externalId,
+              },
+              ['externalId'],
+            )
+          : undefined;
       const paymentRecords = paymentId
         ? await transaction
             .select()
@@ -167,12 +184,12 @@ export class PaymentsService {
             : [];
       const payment =
         paymentRecords[0] ??
-        (orderId
+        ((orderId ?? providerOrderId)
           ? (
               await transaction
                 .select()
                 .from(payments)
-                .where(eq(payments.orderId, orderId))
+                .where(eq(payments.orderId, orderId ?? providerOrderId!))
                 .limit(1)
             )[0]
           : undefined);
@@ -247,6 +264,34 @@ export class PaymentsService {
     }
 
     return { ...order, priceMinor, currency };
+  }
+
+  private async findPaymentByDirectReferences(input: {
+    paymentId?: string;
+    providerPaymentId?: string;
+    providerCheckoutId?: string;
+  }): Promise<Payment | undefined> {
+    const records = input.paymentId
+      ? await this.database.db
+          .select()
+          .from(payments)
+          .where(eq(payments.id, input.paymentId))
+          .limit(1)
+      : input.providerPaymentId
+        ? await this.database.db
+            .select()
+            .from(payments)
+            .where(eq(payments.providerPaymentId, input.providerPaymentId))
+            .limit(1)
+        : input.providerCheckoutId
+          ? await this.database.db
+              .select()
+              .from(payments)
+              .where(eq(payments.providerCheckoutId, input.providerCheckoutId))
+              .limit(1)
+          : [];
+
+    return records[0];
   }
 
   private async findOrCreatePayment(order: PayableOrder): Promise<Payment> {

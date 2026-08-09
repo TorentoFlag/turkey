@@ -2,9 +2,9 @@
 
 ## Goal
 
-Webhook `payment.captured`, содержащий идентификатор заказа Arc в `external_id`,
-переводит соответствующий локальный payment в `succeeded` и создаёт одно
-уведомление через outbox.
+Webhook `payment.captured`, содержащий Arc `payment_id`, находит payment через
+Arc API, получает `external_id` заказа, переводит соответствующий локальный
+payment в `succeeded` и создаёт одно уведомление через outbox.
 
 ## Context
 
@@ -19,7 +19,8 @@ Webhook `payment.captured`, содержащий идентификатор за
 ## Constraints
 
 - Не менять `orders.is_processed`.
-- Принимать `external_id` только как UUID и сопоставлять его только с
+- Принимать provider `payment_id` только как UUID; `external_id`, полученный
+  read-only lookup из Arc, принимать только как UUID и сопоставлять только с
   `payments.order_id`.
 - Не обходить проверку подписи, дедупликацию webhook или transactional outbox.
 - Для уже принятого production webhook не удалять запись дедупликации: после
@@ -29,11 +30,11 @@ Webhook `payment.captured`, содержащий идентификатор за
 ## Plan
 
 1. [ ] Добавить integration regression test: capture webhook без internal
-   metadata, но с `data.external_id = orderId`, возвращает payment `succeeded`
-   и создаёт единственный outbox event.
+   metadata, но с `data.payment_id`, получает order из Arc и возвращает payment
+   `succeeded` с единственным outbox event.
 2. [ ] Запустить тест и подтвердить RED на текущем коде.
-3. [ ] Добавить минимальный fallback lookup `payments.order_id` по UUID из
-   верхнеуровневого или вложенного `payment.external_id`.
+3. [ ] Добавить минимальный provider lookup по Arc `payment_id`, затем
+   fallback `payments.order_id` по UUID из Arc `external_id`.
 4. [ ] Запустить узкий тест GREEN, затем backend quality gates.
 5. [ ] Доставить код на production и проверить health/version.
 6. [ ] Восстановить только payment заказа

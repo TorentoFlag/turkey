@@ -1119,7 +1119,7 @@ describe('admin catalog API', () => {
     });
   });
 
-  it('correlates a signed capture webhook by Arc external_id and creates the order notification event once', async () => {
+  it('correlates a signed capture webhook by Arc payment_id and creates the order notification event once', async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(
@@ -1218,13 +1218,19 @@ describe('admin catalog API', () => {
     });
     expect(forbiddenReturn.statusCode).toBe(404);
 
+    fetchMock.mockResolvedValueOnce(
+      Response.json({
+        id: '018f71c1-4afe-7b1d-9f55-123456789abf',
+        external_id: orderId,
+      }),
+    );
+
     const eventId = '018f71c1-4afe-7b1d-9f55-123456789abe';
     const timestamp = String(Math.floor(Date.now() / 1_000));
     const body = JSON.stringify({
       event_type: 'payment.captured',
       data: {
-        id: '018f71c1-4afe-7b1d-9f55-123456789abf',
-        external_id: orderId,
+        payment_id: '018f71c1-4afe-7b1d-9f55-123456789abf',
       },
     });
     const signature = createHmac('sha256', 'test-webhook-secret')
