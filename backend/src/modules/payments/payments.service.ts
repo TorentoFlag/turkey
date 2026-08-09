@@ -54,7 +54,7 @@ export class PaymentsService {
       amountMinor: payment.amountMinor,
       currency: payment.currency,
       customerEmail: order.email,
-      description: order.productTitle.slice(0, 500),
+      description: '-',
       externalId: order.id,
       idempotencyKey: payment.idempotencyKey,
       metadata: { order_id: order.id, payment_id: payment.id },

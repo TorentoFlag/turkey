@@ -1111,6 +1111,7 @@ describe('admin catalog API', () => {
     );
     const checkoutRequest = fetchMock.mock.calls[1]?.[1];
     expect(JSON.parse(String(checkoutRequest?.body))).toMatchObject({
+      description: '-',
       payment_methods: [{ method: 'sbp', payment_mode: 'h2h' }],
       success_url: `https://shop.example.test/checkout/return?order=${orderId}&result=success`,
       fail_url: `https://shop.example.test/checkout/return?order=${orderId}&result=failed`,
