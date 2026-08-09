@@ -1119,7 +1119,7 @@ describe('admin catalog API', () => {
     });
   });
 
-  it('accepts a signed capture webhook once and creates the order notification event', async () => {
+  it('correlates a signed capture webhook by Arc external_id and creates the order notification event once', async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(
@@ -1224,7 +1224,7 @@ describe('admin catalog API', () => {
       event_type: 'payment.captured',
       data: {
         id: '018f71c1-4afe-7b1d-9f55-123456789abf',
-        metadata: { payment_id: paymentId },
+        external_id: orderId,
       },
     });
     const signature = createHmac('sha256', 'test-webhook-secret')

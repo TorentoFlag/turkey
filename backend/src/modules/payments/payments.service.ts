@@ -143,6 +143,9 @@ export class PaymentsService {
       const providerCheckoutId =
         readUuid(parsed.data.data, ['checkout_session_id']) ??
         readUuid(parsed.data.data, ['checkout_session', 'id']);
+      const orderId =
+        readUuid(parsed.data.data, ['external_id']) ??
+        readUuid(parsed.data.data, ['payment', 'external_id']);
       const paymentRecords = paymentId
         ? await transaction
             .select()
@@ -162,7 +165,17 @@ export class PaymentsService {
                 .where(eq(payments.providerCheckoutId, providerCheckoutId))
                 .limit(1)
             : [];
-      const payment = paymentRecords[0];
+      const payment =
+        paymentRecords[0] ??
+        (orderId
+          ? (
+              await transaction
+                .select()
+                .from(payments)
+                .where(eq(payments.orderId, orderId))
+                .limit(1)
+            )[0]
+          : undefined);
 
       if (!payment) {
         return;
