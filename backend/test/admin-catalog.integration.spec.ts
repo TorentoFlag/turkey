@@ -735,8 +735,8 @@ describe('admin catalog API', () => {
       deliveryAddress: null,
       bookingStartDate: '2026-09-10',
       bookingEndDate: '2026-09-12',
-      isProcessed: false,
     });
+    expect(response.json()).not.toHaveProperty('isProcessed');
     const orderId = response.json<{ id: string }>().id;
     expect(repeated.statusCode).toBe(201);
     expect(repeated.json<{ id: string }>().id).toBe(orderId);
@@ -811,8 +811,8 @@ describe('admin catalog API', () => {
       deliveryAddress: 'Antalya, Konyaalti, Ataturk Blv. 10',
       bookingStartDate: null,
       bookingEndDate: null,
-      isProcessed: false,
     });
+    expect(response.json()).not.toHaveProperty('isProcessed');
   });
 
   it('returns only the authenticated users order history', async () => {
@@ -883,9 +883,9 @@ describe('admin catalog API', () => {
       expect.objectContaining({
         product: expect.objectContaining({ id: product.id }),
         email: 'history-owner@example.test',
-        isProcessed: false,
       }),
     ]);
+    expect(history.json()[0]).not.toHaveProperty('isProcessed');
   });
 
   it('marks an order processed through the admin API and records the actor', async () => {

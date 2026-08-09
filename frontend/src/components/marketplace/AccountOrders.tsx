@@ -29,9 +29,13 @@ function refundLabel(state: NonNullable<ApiOrder["refund"]>["state"]) {
 }
 
 function paymentLabel(state: NonNullable<ApiOrder["payment"]>["state"]) {
-  if (state === "succeeded") return "Оплата подтверждена";
+  if (state === "succeeded") return "Успешно";
   if (state === "failed") return "Оплата не подтверждена";
   return "Ожидаем подтверждения оплаты";
+}
+
+function customerOrderStatus(order: ApiOrder) {
+  return order.payment ? paymentLabel(order.payment.state) : "Заявка принята";
 }
 
 export function AccountOrders() {
@@ -100,9 +104,11 @@ export function AccountOrders() {
               </span>
               <span>
                 {amount && <b>{amount}</b>}
-                <em className={styles.status}>
-                  {order.isProcessed ? "Обработана" : "Необработана"}
-                </em>
+                <span className={styles.statuses}>
+                  <em className={`${styles.status} ${styles.paymentStatus}`}>
+                    {customerOrderStatus(order)}
+                  </em>
+                </span>
               </span>
             </summary>
             <div className={styles.orderBody}>

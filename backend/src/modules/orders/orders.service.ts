@@ -53,7 +53,6 @@ export type OrderResponse = Readonly<{
   deliveryAddress: string | null;
   bookingStartDate: string | null;
   bookingEndDate: string | null;
-  isProcessed: boolean;
   payment: Readonly<{
     state: Payment['state'];
   }> | null;
@@ -366,7 +365,6 @@ function toOrderResponse(
     deliveryAddress: order.deliveryAddress,
     bookingStartDate: order.bookingStartDate,
     bookingEndDate: order.bookingEndDate,
-    isProcessed: order.isProcessed,
     payment: paymentState ? { state: paymentState } : null,
     refund: refundState ? { state: refundState } : null,
     createdAt: order.createdAt,

@@ -34,7 +34,6 @@ export type ApiOrder = Readonly<{
   deliveryAddress: string | null;
   bookingStartDate: string | null;
   bookingEndDate: string | null;
-  isProcessed: boolean;
   payment: Readonly<{
     state: "pending" | "succeeded" | "failed";
   }> | null;

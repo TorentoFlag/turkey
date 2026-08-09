@@ -10,7 +10,7 @@ When implementing the approved product, replace them with typed API access to th
 
 - `src/lib/marketplace/local-store.ts` and `AccountGate.tsx`: server auth/session, never browser-stored passwords;
 - `CheckoutForm.tsx`: Arc Pay Hosted Checkout redirect, never card fields;
-- `AccountOrders.tsx`: `GET /v1/me/orders`, only `обработана`/`необработана` as manager state;
+- `AccountOrders.tsx`: `GET /v1/me/orders`; не показывать и не использовать внутренний менеджерский признак `isProcessed`;
 - mock catalogue and fixed category unions: API-driven categories/products;
 - cart and static checkout: one product/order flow chosen by product type.
 

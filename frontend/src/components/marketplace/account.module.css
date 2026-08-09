@@ -12,7 +12,9 @@
 .order summary > span:last-child { justify-items: end; }
 .order summary small { color: #60645b; }
 .order summary b { font-size: 1.1rem; }
+.statuses { display: flex; flex-wrap: wrap; justify-content: end; gap: .35rem; }
 .status { width: fit-content; padding: .35rem .6rem; border-radius: 999px; background: rgba(165,78,51,.1); color: #a54e33; font-size: .72rem; font-style: normal; font-weight: 700; }
+.paymentStatus { background: rgba(36,39,33,.1); color: #242721; }
 .orderBody { display: grid; gap: 1.25rem; padding: 0 0 1.5rem; }
 .orderMeta { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; padding-top: 1rem; border-top: 1px solid rgba(36,39,33,.14); color: #60645b; font-size: .78rem; }
 .orderMeta span, .orderItems div { display: grid; gap: .35rem; }
@@ -49,4 +51,4 @@
 .accountToolbar strong { color: #242721; }
 .accountToolbar button { background: transparent; color: #242721; }
 @media (max-width: 820px) { .accountLanding { grid-template-columns: 1fr; } .accountAside { min-height: 20rem; } .loginCard h2 { white-space: normal; } }
-@media (max-width: 720px) { .ordersIntro, .order summary { align-items: start; flex-direction: column; } .order summary > span:last-child { justify-items: start; } .orderMeta { grid-template-columns: 1fr; } }
+@media (max-width: 720px) { .ordersIntro, .order summary { align-items: start; flex-direction: column; } .order summary > span:last-child { justify-items: start; } .statuses { justify-content: start; } .orderMeta { grid-template-columns: 1fr; } }
