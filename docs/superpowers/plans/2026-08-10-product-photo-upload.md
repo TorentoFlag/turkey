@@ -109,6 +109,7 @@ Expected: all checks pass before commit.
 
 **Files:**
 - Modify: compose.prod.yml
+- Modify: compose.dev.yml
 - Modify: backend/.env.example
 - Modify: docs/development/production-runbook.md
 - Create: backend/test/product-media-compose.spec.ts
@@ -119,7 +120,7 @@ Expected: all checks pass before commit.
 
 - [ ] **Step 1: Write failing operational topology test**
 
-Read Compose, the example environment, and the runbook. Assert MinIO has no ports entry, persists only turkiye-minio-data, and init waits for MinIO health. Assert API/worker wait for init success. Assert the runbook has location ^~ /media/ proxying only /turkiye-catalog-media/ to http://minio:9000 and no Console route.
+Read production/dev Compose, the example environment, and the runbook. Assert production MinIO has no ports entry, persists only turkiye-minio-data, and init waits for MinIO health. Assert production API/worker wait for init success. Assert development Compose exposes MinIO only on loopback port 9000 and has the same named volume/init contract. Assert the runbook has location ^~ /media/ proxying only /turkiye-catalog-media/ to http://minio:9000 and no Console route.
 
 Run: cd backend && npm run test -- product-media-compose.spec.ts
 
@@ -127,7 +128,7 @@ Expected: FAIL because storage topology is absent.
 
 - [ ] **Step 2: Implement MinIO and idempotent bucket initialization**
 
-Add a MinIO service using command server /data --console-address :9001 and a healthcheck at /minio/health/live, without a host port. Add matching mc init service that creates bucket turkiye-catalog-media, enables anonymous download only for this bucket, creates/verifies the application user, and attaches policy limited to PutObject, GetObject, DeleteObject and ListBucket for this bucket/products prefix.
+Add a production MinIO service using command server /data --console-address :9001 and a healthcheck at /minio/health/live, without a host port. Add matching mc init service that creates bucket turkiye-catalog-media, enables anonymous download only for this bucket, creates/verifies the application user, and attaches policy limited to PutObject, GetObject, DeleteObject and ListBucket for this bucket/products prefix. Add the same MinIO/init pair to development Compose, publishing only 127.0.0.1:9000 for local API/browser proof.
 
 Pass root credentials only to MinIO/init. Pass endpoint, bucket, public base URL and non-root application credentials to API/worker. Document variable names with placeholders only. Add this exact host-owner proxy contract:
 
@@ -145,8 +146,9 @@ Run:
 
 ~~~bash
 docker compose --env-file .env.example -f compose.prod.yml config
+docker compose --env-file backend/.env.example -f compose.dev.yml config
 cd backend && npm run test -- product-media-compose.spec.ts
-git add compose.prod.yml backend/.env.example docs/development/production-runbook.md backend/test/product-media-compose.spec.ts
+git add compose.prod.yml compose.dev.yml backend/.env.example docs/development/production-runbook.md backend/test/product-media-compose.spec.ts
 git commit -m "feat(turkiye): provision private MinIO product media"
 ~~~
 
@@ -347,7 +349,7 @@ Expected: FAIL because UI has editable URL only.
 
 - [ ] **Step 2: Implement client and component**
 
-Use JSON when photo is null; otherwise use FormData and credentials include. Create/revoke preview object URL in effect. Use accept image/jpeg,image/png,image/webp. Do not persist File, preview URL, product, users, orders, or payments to localStorage.
+Use JSON when photo is null; otherwise use FormData, credentials include, and product JSON formed as { ...input, imageUrl: null } so a replacement does not collide with Turkiye's photo-plus-URL rejection. Create/revoke preview object URL in effect. Use accept image/jpeg,image/png,image/webp. Do not persist File, preview URL, product, users, orders, or payments to localStorage.
 
 Replace the editable product image URL field; display an existing URL read-only as preview. Clearing unsaved replacement leaves existing image untouched. Preserve type/price normalization and all failed-save fields.
 

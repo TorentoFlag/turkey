@@ -1,0 +1,97 @@
+import { randomUUID } from 'node:crypto';
+import { BadRequestException } from '@nestjs/common';
+import sharp from 'sharp';
+
+export const PRODUCT_PHOTO_MAX_BYTES = 5_242_880;
+
+export type ProductPhotoUpload = Readonly<{
+  buffer: Buffer;
+  byteLength: number;
+}>;
+
+export type StoredProductPhoto = Readonly<{
+  objectKey: string;
+  imageUrl: string;
+}>;
+
+export interface ProductMediaStorage {
+  putWebp(input: { objectKey: string; body: Buffer }): Promise<void>;
+  deleteObject(objectKey: string): Promise<void>;
+  listProductObjects(): Promise<
+    ReadonlyArray<{ objectKey: string; lastModified: Date }>
+  >;
+}
+
+export class ProductMediaService {
+  constructor(
+    private readonly storage: ProductMediaStorage,
+    private readonly mediaPublicBaseUrl: string,
+  ) {}
+
+  async store(
+    productId: string,
+    upload: ProductPhotoUpload,
+  ): Promise<StoredProductPhoto> {
+    if (
+      upload.byteLength !== upload.buffer.byteLength ||
+      upload.byteLength > PRODUCT_PHOTO_MAX_BYTES
+    ) {
+      throw new BadRequestException('Invalid product photo.');
+    }
+
+    let body: Buffer;
+    try {
+      const image = sharp(upload.buffer, {
+        failOn: 'error',
+        limitInputPixels: 40_000_000,
+      });
+      const metadata = await image.metadata();
+
+      if (
+        metadata.format !== 'jpeg' &&
+        metadata.format !== 'png' &&
+        metadata.format !== 'webp'
+      ) {
+        throw new Error('Unsupported image format.');
+      }
+
+      body = await image
+        .rotate()
+        .resize({
+          width: 2560,
+          height: 2560,
+          fit: 'inside',
+          withoutEnlargement: true,
+        })
+        .webp({ quality: 82 })
+        .toBuffer();
+    } catch {
+      throw new BadRequestException('Invalid product photo.');
+    }
+
+    const objectKey = `products/${productId}/${randomUUID()}.webp`;
+    await this.storage.putWebp({ objectKey, body });
+
+    return {
+      objectKey,
+      imageUrl: `${this.mediaPublicBaseUrl.replace(/\/$/, '')}/${objectKey}`,
+    };
+  }
+
+  isManagedImageUrl(value: string | null): boolean {
+    return value !== null && this.objectKeyFromManagedImageUrl(value) !== null;
+  }
+
+  objectKeyFromManagedImageUrl(value: string): string | null {
+    const prefix = `${this.mediaPublicBaseUrl.replace(/\/$/, '')}/products/`;
+
+    if (!value.startsWith(prefix)) {
+      return null;
+    }
+
+    const key = value.slice(`${this.mediaPublicBaseUrl.replace(/\/$/, '')}/`.length);
+    return /^products\/[0-9a-f-]{36}\/[0-9a-f-]{36}\.webp$/i.test(key)
+      ? key
+      : null;
+  }
+}
