@@ -30,6 +30,8 @@ services:
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD}
     volumes:
       - turkiye-minio-data:/data
+    ports:
+      - "127.0.0.1:${MINIO_BIND_PORT:-9000}:9000"
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9000/minio/health/live"]
       interval: 5s
