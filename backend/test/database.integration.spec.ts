@@ -38,16 +38,29 @@ describe('database migrations', () => {
 
   it('creates catalog, audit, account, and security tables on a clean PostgreSQL database', async () => {
     const result = await pool.query<{ table_name: string }>(
-      "select table_name from information_schema.tables where table_schema = 'public' and table_name in ('auth_rate_limits', 'categories', 'products', 'audit_log', 'users', 'sessions') order by table_name",
+      "select table_name from information_schema.tables where table_schema = 'public' and table_name in ('auth_rate_limits', 'categories', 'products', 'audit_log', 'users', 'sessions', 'destinations', 'product_destinations') order by table_name",
     );
 
     expect(result.rows).toEqual([
       { table_name: 'audit_log' },
       { table_name: 'auth_rate_limits' },
       { table_name: 'categories' },
+      { table_name: 'destinations' },
+      { table_name: 'product_destinations' },
       { table_name: 'products' },
       { table_name: 'sessions' },
       { table_name: 'users' },
+    ]);
+  });
+
+  it('creates one product-to-direction relation per pair', async () => {
+    const result = await pool.query<{ column_name: string }>(
+      "select column_name from information_schema.key_column_usage where table_schema = 'public' and table_name = 'product_destinations' and constraint_name = 'product_destinations_pkey' order by ordinal_position",
+    );
+
+    expect(result.rows).toEqual([
+      { column_name: 'product_id' },
+      { column_name: 'destination_id' },
     ]);
   });
 
