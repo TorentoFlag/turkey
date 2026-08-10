@@ -8,6 +8,7 @@ import { MarketplaceBreadcrumbs } from "@/components/marketplace/MarketplaceBrea
 import { MarketplaceHeader } from "@/components/marketplace/MarketplaceHeader";
 import { ProductActions } from "@/components/marketplace/ProductActions";
 import { marketplaceApi, type ApiProduct } from "@/lib/marketplace/api";
+import { displayProductPrice } from "@/lib/marketplace/product-price";
 
 import styles from "./product.module.css";
 
@@ -18,9 +19,7 @@ function typeLabel(type: ApiProduct["type"]) {
 }
 
 function priceLabel(product: ApiProduct) {
-  if (product.type === "booking") return "Цена по запросу";
-  if (product.priceMinor === null || product.currency === null) return "Цена уточняется";
-  return new Intl.NumberFormat("ru-RU", { style: "currency", currency: product.currency }).format(product.priceMinor / 100);
+  return displayProductPrice(product);
 }
 
 export default function ServicePage() {

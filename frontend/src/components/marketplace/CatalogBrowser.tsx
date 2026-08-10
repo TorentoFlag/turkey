@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 import { marketplaceApi, type ApiCategory, type ApiProduct } from "@/lib/marketplace/api";
+import { displayProductPrice } from "@/lib/marketplace/product-price";
 
 import cardStyles from "./marketplace.module.css";
 import styles from "./catalog.module.css";
@@ -20,9 +21,7 @@ function productTypeLabel(type: ApiProduct["type"]) {
 }
 
 function productPrice(product: ApiProduct) {
-  if (product.type === "booking") return "Цена по запросу";
-  if (product.priceMinor === null || product.currency === null) return "Цена уточняется";
-  return new Intl.NumberFormat("ru-RU", { style: "currency", currency: product.currency }).format(product.priceMinor / 100);
+  return displayProductPrice(product);
 }
 
 function ProductCard({ product, categoryName }: { product: ApiProduct; categoryName?: string }) {

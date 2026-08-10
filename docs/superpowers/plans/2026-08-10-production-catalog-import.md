@@ -14,7 +14,7 @@
 - Create 10 active root categories and exactly 3 active child categories; leave unrelated existing production records unchanged.
 - Category depth stays at two levels.
 - Map `connectivity`, `tickets`, `digital`, `guides` to `auto_delivery`; `shopping` to `physical`; all other design types to `booking`.
-- Store each displayed design price as positive `priceMinor` in `RUB`, including booking items; booking must still never create checkout.
+- Store each displayed design price as positive `priceMinor` in `RUB`, including booking items; catalog cards and product pages display this booking price, while checkout still never creates payment for booking.
 - Upload exactly one local image per product using multipart `photo`; no external source URLs enter the catalog.
 - Enforce the 5 MiB input limit and allowed source formats before writing. Convert only `bursa-koza-han-market.jpg` (oversize) and `cappadocia-cave-hotel.avif` (unsupported AVIF) in memory to WebP; do not alter the licensed design assets.
 - Use Admin API only; no direct writes to PostgreSQL or MinIO.
