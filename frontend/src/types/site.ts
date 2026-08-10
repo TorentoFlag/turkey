@@ -6,6 +6,7 @@ export interface SiteConfig {
   defaultCurrency: string;
   supportedCurrencies: string[];
   legalCompanyName: string | null;
+  registrationNumber: string | null;
   taxId: string | null;
   legalAddress: string | null;
   supportEmail: string | null;
