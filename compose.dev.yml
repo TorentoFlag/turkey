@@ -6,7 +6,7 @@ services:
       MINIO_ROOT_USER: turkiye-minio-root
       MINIO_ROOT_PASSWORD: turkiye-minio-root-password
     ports:
-      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:${MINIO_BIND_PORT:-9000}:9000"
     volumes:
       - turkiye-minio-data:/data
     healthcheck:

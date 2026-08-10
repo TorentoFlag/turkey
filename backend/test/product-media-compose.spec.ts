@@ -28,7 +28,7 @@ describe('product media deployment topology', () => {
       'mc admin policy attach local catalog-media-app',
     );
     expect(development).toContain('\n  minio:');
-    expect(development).toContain('127.0.0.1:9000:9000');
+    expect(development).toContain('127.0.0.1:${MINIO_BIND_PORT:-9000}:9000');
     expect(development).toContain(
       'mc admin policy attach local catalog-media-app',
     );
