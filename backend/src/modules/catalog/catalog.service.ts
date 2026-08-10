@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { and, asc, count, eq, inArray, ne } from 'drizzle-orm';
+import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { DatabaseService } from '../../database/database.service.js';
 import {
@@ -15,6 +16,10 @@ import {
   type Product,
 } from '../../database/schema/index.js';
 import type { AuthenticatedAdmin } from '../admin-api/admin-api-auth.js';
+import {
+  ProductMediaService,
+  type ProductPhotoUpload,
+} from '../media/product-media.service.js';
 
 const slugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
@@ -117,7 +122,10 @@ export type PublicProduct = Readonly<{
 
 @Injectable()
 export class CatalogService {
-  constructor(private readonly database: DatabaseService) {}
+  constructor(
+    private readonly database: DatabaseService,
+    private readonly media: ProductMediaService,
+  ) {}
 
   async listCategories(): Promise<Category[]> {
     return this.database.db
@@ -352,6 +360,7 @@ export class CatalogService {
   async createProduct(
     actor: AuthenticatedAdmin,
     input: unknown,
+    photo: ProductPhotoUpload | null = null,
   ): Promise<Product> {
     const parsed = createProductSchema.safeParse(input);
 
@@ -366,38 +375,54 @@ export class CatalogService {
       throw new NotFoundException('Product category was not found.');
     }
 
-    return this.database.db.transaction(async (transaction) => {
-      const inserted = await transaction
-        .insert(products)
-        .values(command)
-        .onConflictDoNothing()
-        .returning();
-      const product = inserted[0];
+    const productId = photo ? randomUUID() : undefined;
+    const stored =
+      photo && productId ? await this.media.store(productId, photo) : null;
+    try {
+      return await this.database.db.transaction(async (transaction) => {
+        const inserted = await transaction
+          .insert(products)
+          .values({
+            ...command,
+            ...(productId ? { id: productId } : {}),
+            ...(stored ? { imageUrl: stored.imageUrl } : {}),
+          })
+          .onConflictDoNothing()
+          .returning();
+        const product = inserted[0];
 
-      if (!product) {
-        throw new ConflictException('Product slug already exists.');
-      }
+        if (!product) {
+          throw new ConflictException('Product slug already exists.');
+        }
 
-      await transaction.insert(auditLog).values({
-        actorId: actor.actorId,
-        action: 'product.created',
-        entityType: 'product',
-        entityId: product.id,
-        payload: {
-          categoryId: product.categoryId,
-          slug: product.slug,
-          type: product.type,
-        },
+        await transaction.insert(auditLog).values({
+          actorId: actor.actorId,
+          action: 'product.created',
+          entityType: 'product',
+          entityId: product.id,
+          payload: {
+            categoryId: product.categoryId,
+            slug: product.slug,
+            type: product.type,
+            imageUploaded: stored !== null,
+          },
+        });
+
+        return product;
       });
-
-      return product;
-    });
+    } catch (error) {
+      if (stored) {
+        await this.media.deleteObject(stored.objectKey).catch(() => undefined);
+      }
+      throw error;
+    }
   }
 
   async updateProduct(
     id: string,
     actor: AuthenticatedAdmin,
     input: unknown,
+    photo: ProductPhotoUpload | null = null,
   ): Promise<Product> {
     const parsed = updateProductSchema.safeParse(input);
 
@@ -434,28 +459,53 @@ export class CatalogService {
       await this.assertProductSlugAvailable(changes.slug, current.id);
     }
 
-    return this.database.db.transaction(async (transaction) => {
-      const updated = await transaction
-        .update(products)
-        .set({ ...changes, updatedAt: new Date() })
-        .where(eq(products.id, id))
-        .returning();
-      const product = updated[0];
+    const stored = photo ? await this.media.store(current.id, photo) : null;
+    try {
+      const product = await this.database.db.transaction(async (transaction) => {
+        const updated = await transaction
+          .update(products)
+          .set({
+            ...changes,
+            ...(stored ? { imageUrl: stored.imageUrl } : {}),
+            updatedAt: new Date(),
+          })
+          .where(eq(products.id, id))
+          .returning();
+        const product = updated[0];
 
-      if (!product) {
-        throw new NotFoundException('Product was not found.');
-      }
+        if (!product) {
+          throw new NotFoundException('Product was not found.');
+        }
 
-      await transaction.insert(auditLog).values({
-        actorId: actor.actorId,
-        action: 'product.updated',
-        entityType: 'product',
-        entityId: product.id,
-        payload: { changedFields: Object.keys(changes) },
+        await transaction.insert(auditLog).values({
+          actorId: actor.actorId,
+          action: 'product.updated',
+          entityType: 'product',
+          entityId: product.id,
+          payload: {
+            changedFields: [
+              ...Object.keys(changes),
+              ...(stored ? ['imageUrl'] : []),
+            ],
+            imageUploaded: stored !== null,
+          },
+        });
+
+        return product;
       });
-
+      const previousKey = current.imageUrl
+        ? this.media.objectKeyFromManagedImageUrl(current.imageUrl)
+        : null;
+      if (stored && previousKey) {
+        await this.media.deleteObject(previousKey).catch(() => undefined);
+      }
       return product;
-    });
+    } catch (error) {
+      if (stored) {
+        await this.media.deleteObject(stored.objectKey).catch(() => undefined);
+      }
+      throw error;
+    }
   }
 
   private async findCategory(id: string): Promise<Category | undefined> {

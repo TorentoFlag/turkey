@@ -5,14 +5,25 @@ import {
   type NestFastifyApplication,
 } from '@nestjs/platform-fastify';
 import { ConfigService } from '@nestjs/config';
+import multipart from '@fastify/multipart';
 import type { AppEnv } from '../config/env.js';
 import { registerRequestContext } from './request-context.js';
+import { PRODUCT_PHOTO_MAX_BYTES } from '../modules/media/product-media.service.js';
 
 export async function createApiApp(
   module: Type<unknown>,
 ): Promise<NestFastifyApplication> {
   const adapter = new FastifyAdapter({ logger: false });
   const fastify = adapter.getInstance();
+
+  await fastify.register(multipart, {
+    limits: {
+      files: 1,
+      fileSize: PRODUCT_PHOTO_MAX_BYTES,
+      fields: 1,
+      parts: 2,
+    },
+  });
 
   fastify.removeContentTypeParser('application/json');
   fastify.addContentTypeParser(

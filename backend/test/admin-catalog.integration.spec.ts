@@ -3,6 +3,7 @@ import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import type { Type } from '@nestjs/common';
 import { createHmac } from 'node:crypto';
 import { Pool } from 'pg';
+import sharp from 'sharp';
 import {
   afterAll,
   afterEach,
@@ -13,6 +14,7 @@ import {
   vi,
 } from 'vitest';
 import { runMigrations } from '../src/database/migrate.js';
+import { MinioProductMediaStorage } from '../src/modules/media/minio-product-media.storage.js';
 import { startPostgres } from './support/postgres.js';
 
 describe('admin catalog API', () => {
@@ -58,6 +60,7 @@ describe('admin catalog API', () => {
   afterEach(async () => {
     await app?.close();
     app = undefined;
+    vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
 
@@ -323,6 +326,80 @@ describe('admin catalog API', () => {
         entity_id: product.id,
       },
     ]);
+  });
+
+  it('creates a product from one multipart photo and rejects a competing image URL', async () => {
+    const putPhoto = vi
+      .spyOn(MinioProductMediaStorage.prototype, 'putWebp')
+      .mockResolvedValue(undefined);
+    app = await createApp(appModule);
+    const category = await createCategory(app, {
+      name: 'Фото товаров',
+      slug: 'product-photos',
+    });
+    const photo = await sharp({
+      create: {
+        width: 3,
+        height: 2,
+        channels: 3,
+        background: { r: 40, g: 80, b: 120 },
+      },
+    })
+      .png()
+      .toBuffer();
+    const productInput = {
+      categoryId: category.id,
+      title: 'Товар с фотографией',
+      slug: 'product-with-photo',
+      description: 'Товар, созданный с загруженной фотографией.',
+      type: 'physical',
+      priceMinor: 10_000,
+      currency: 'TRY',
+    };
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v1/admin/products',
+      headers: {
+        ...adminHeaders(),
+        'content-type': multipartContentType(),
+      },
+      payload: multipartProductPayload(productInput, photo),
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(response.json()).toMatchObject({
+      slug: 'product-with-photo',
+      imageUrl: expect.stringMatching(
+        /^https:\/\/turkeyplanners\.test\/media\/products\/[0-9a-f-]{36}\/[0-9a-f-]{36}\.webp$/i,
+      ),
+    });
+    expect(putPhoto).toHaveBeenCalledWith(
+      expect.objectContaining({
+        objectKey: expect.stringMatching(/^products\/[0-9a-f-]{36}\//i),
+        body: expect.any(Buffer),
+      }),
+    );
+
+    const conflicting = await app.inject({
+      method: 'POST',
+      url: '/v1/admin/products',
+      headers: {
+        ...adminHeaders(),
+        'content-type': multipartContentType(),
+      },
+      payload: multipartProductPayload(
+        {
+          ...productInput,
+          slug: 'product-with-conflicting-photo',
+          imageUrl: 'https://images.example.test/legacy.jpg',
+        },
+        photo,
+      ),
+    });
+
+    expect(conflicting.statusCode).toBe(400);
+    expect(putPhoto).toHaveBeenCalledTimes(1);
   });
 
   it('updates and deactivates a product while preserving its type rules', async () => {
@@ -1430,4 +1507,23 @@ function restoreEnvironment(name: string, value: string | undefined): void {
   } else {
     process.env[name] = value;
   }
+}
+
+const multipartBoundary = 'turkiye-product-photo-boundary';
+
+function multipartContentType(): string {
+  return `multipart/form-data; boundary=${multipartBoundary}`;
+}
+
+function multipartProductPayload(
+  product: Record<string, unknown>,
+  photo: Buffer,
+): Buffer {
+  return Buffer.concat([
+    Buffer.from(
+      `--${multipartBoundary}\r\nContent-Disposition: form-data; name="product"\r\nContent-Type: application/json\r\n\r\n${JSON.stringify(product)}\r\n--${multipartBoundary}\r\nContent-Disposition: form-data; name="photo"; filename="product.png"\r\nContent-Type: image/png\r\n\r\n`,
+    ),
+    photo,
+    Buffer.from(`\r\n--${multipartBoundary}--\r\n`),
+  ]);
 }

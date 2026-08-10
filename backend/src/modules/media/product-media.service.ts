@@ -82,6 +82,10 @@ export class ProductMediaService {
     return value !== null && this.objectKeyFromManagedImageUrl(value) !== null;
   }
 
+  async deleteObject(objectKey: string): Promise<void> {
+    await this.storage.deleteObject(objectKey);
+  }
+
   objectKeyFromManagedImageUrl(value: string): string | null {
     const prefix = `${this.mediaPublicBaseUrl.replace(/\/$/, '')}/products/`;
 

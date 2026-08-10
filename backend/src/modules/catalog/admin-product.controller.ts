@@ -1,18 +1,20 @@
 import {
-  Body,
   Controller,
   Get,
   Param,
   Patch,
   Post,
   UseGuards,
+  Req,
 } from '@nestjs/common';
+import type { FastifyRequest } from 'fastify';
 import {
   AdminActor,
   AdminApiKeyGuard,
 } from '../admin-api/admin-api-key.guard.js';
 import type { AuthenticatedAdmin } from '../admin-api/admin-api-auth.js';
 import { CatalogService } from './catalog.service.js';
+import { readProductMutationPayload } from './product-multipart.input.js';
 
 @Controller('v1/admin/products')
 @UseGuards(AdminApiKeyGuard)
@@ -25,19 +27,21 @@ export class AdminProductController {
   }
 
   @Post()
-  createProduct(
+  async createProduct(
     @AdminActor() actor: AuthenticatedAdmin,
-    @Body() body: unknown,
+    @Req() request: FastifyRequest,
   ) {
-    return this.catalog.createProduct(actor, body);
+    const payload = await readProductMutationPayload(request);
+    return this.catalog.createProduct(actor, payload.input, payload.photo);
   }
 
   @Patch(':id')
-  updateProduct(
+  async updateProduct(
     @Param('id') id: string,
     @AdminActor() actor: AuthenticatedAdmin,
-    @Body() body: unknown,
+    @Req() request: FastifyRequest,
   ) {
-    return this.catalog.updateProduct(id, actor, body);
+    const payload = await readProductMutationPayload(request);
+    return this.catalog.updateProduct(id, actor, payload.input, payload.photo);
   }
 }
