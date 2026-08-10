@@ -162,6 +162,52 @@ already-created category or product still exactly matches the import plan.
 Stop on a conflict or failed upload; do not repair it through direct database
 or MinIO writes.
 
+## One-time Russian product-copy migration
+
+`scripts/catalog-import/translate-product-copy.mjs` is a versioned one-shot
+migration for the two approved English product titles. It reads and writes only
+through the protected Admin API. It does not upload a photo or send any product
+field other than `title`.
+
+Create a new scoped backup before the explicit write. Then run the dry-run from
+the matching deployed commit; it must report two planned updates and zero
+applied updates:
+
+```sh
+install -d -m 700 /opt/turkiye/backups
+docker compose --env-file /etc/turkiye/turkiye.env -f /opt/turkiye/compose.prod.yml \
+  exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' \
+  > /opt/turkiye/backups/pre-russian-product-copy-$(date -u +%Y%m%dT%H%M%SZ).sql
+chmod 600 /opt/turkiye/backups/pre-russian-product-copy-*.sql
+
+docker run --rm --network turkiye_default \
+  --env-file /etc/turkiye/turkiye.env \
+  -e CATALOG_IMPORT_API_BASE_URL=http://api:3001 \
+  -e CATALOG_IMPORT_ACTOR_ID=catalog-copy-translation-2026-08-10 \
+  -v /opt/turkiye:/workspace:ro \
+  turkiye-api node /workspace/scripts/catalog-import/translate-product-copy.mjs
+```
+
+Only after recording the dry-run result, repeat the command once with
+`--apply`:
+
+```sh
+docker run --rm --network turkiye_default \
+  --env-file /etc/turkiye/turkiye.env \
+  -e CATALOG_IMPORT_API_BASE_URL=http://api:3001 \
+  -e CATALOG_IMPORT_ACTOR_ID=catalog-copy-translation-2026-08-10 \
+  -v /opt/turkiye:/workspace:ro \
+  turkiye-api node /workspace/scripts/catalog-import/translate-product-copy.mjs --apply
+```
+
+The command requires `ADMIN_API_KEY` from the protected environment file. It
+first checks that each expected slug exists exactly once and still has its
+approved English source title, so a missing, duplicated, or editorially changed
+record stops before any PATCH. Re-read both records through the Admin API,
+check their normal `product.updated` audit entries, and verify the public
+pages. Do not rerun this migration after a successful apply: its English-title
+precondition is intentionally no longer true.
+
 ## Rollback
 
 Stop application services first, keep the PostgreSQL volume intact, and deploy

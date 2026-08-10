@@ -19,6 +19,7 @@
 ## Task 1: Create and test the safe migration module
 
 **Files:**
+
 - Create: `scripts/catalog-import/translate-product-copy.mjs`
 - Create: `scripts/catalog-import/translate-product-copy.test.mjs`
 
@@ -36,16 +37,18 @@
 ## Task 2: Document the operator runbook
 
 **Files:**
+
 - Modify: `docs/development/production-runbook.md`
 
 1. Add a short catalog-copy migration procedure after the catalog import section.
 2. Specify the internal Docker-network dry-run and explicit apply invocations, required environment variables, fixed actor, and required post-apply re-read.
 3. State that it is one-shot and never rerun after a successful apply because the expected English precondition will intentionally fail.
-4. Run `git diff --check` and search the changed plan/runbook/script paths for unresolved `TODO` or `TBD` markers.
+4. Run `git diff --check` and search the changed plan/runbook/script paths for unresolved placeholder markers.
 
 ## Task 3: Verify, release, and perform the authorized production migration
 
 **Files:**
+
 - No additional source files expected.
 
 1. From `backend/`, run `npm run test:integration -- admin-catalog.integration.spec.ts`; run the new Node migration tests; then run the relevant backend typecheck/build commands available in `package.json`.
@@ -55,4 +58,3 @@
 5. Run the same command once with `--apply`. Re-read through the Admin API and compare each updated record against its pre-migration immutable snapshot.
 6. Open both live product pages/cards in a browser, confirm the Russian titles are visible, and confirm `https://turkeyplanners.com/api/health` stays healthy.
 7. Review `git status`, deployed image/commit, audit records for the two `product.updated` events, and report the exact proof plus any residual risk.
-
