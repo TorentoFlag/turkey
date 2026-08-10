@@ -48,7 +48,7 @@ export default function ServicePage() {
           <p className={styles.productEyebrow}>{typeLabel(product.type)}</p>
           <h1>{product.title}</h1>
           <p className={styles.productDescription}>{product.description}</p>
-          <dl className={styles.productMeta}><div><dt>Формат</dt><dd>{typeLabel(product.type)}</dd></div><div><dt>Оформление</dt><dd>{product.type === "booking" ? "Заявка без оплаты на сайте" : "Оплата через Arc Pay"}</dd></div></dl>
+          <dl className={styles.productMeta}><div><dt>Формат</dt><dd>{typeLabel(product.type)}</dd></div><div><dt>Оформление</dt><dd>{product.type === "booking" ? "Заявка без оплаты на сайте" : "Оплата онлайн рублями"}</dd></div></dl>
           <div className={styles.productPurchase}><div><span>Цена</span><strong>{priceLabel(product)}</strong></div><ProductActions productSlug={product.slug} productType={product.type} /></div>
           <Link className={styles.backLink} href="/catalog">Вернуться в каталог</Link>
         </article>
