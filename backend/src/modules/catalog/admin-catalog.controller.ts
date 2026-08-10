@@ -1,7 +1,10 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   Patch,
   Post,
@@ -39,5 +42,14 @@ export class AdminCatalogController {
     @Body() body: unknown,
   ) {
     return this.catalog.updateCategory(id, actor, body);
+  }
+
+  @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async deleteCategory(
+    @Param('id') id: string,
+    @AdminActor() actor: AuthenticatedAdmin,
+  ) {
+    await this.catalog.deleteCategory(id, actor);
   }
 }

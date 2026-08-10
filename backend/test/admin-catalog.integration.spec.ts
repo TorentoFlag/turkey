@@ -232,6 +232,34 @@ describe('admin catalog API', () => {
     ]);
   });
 
+  it('deletes an empty category and records the authenticated actor', async () => {
+    app = await createApp(appModule);
+    const category = await createCategory(app, { name: 'Удаляемая категория', slug: 'deletable-category' });
+
+    const response = await app.inject({
+      method: 'DELETE',
+      url: `/v1/admin/categories/${category.id}`,
+      headers: { ...adminHeaders(), 'x-admin-actor-id': 'catalog-delete-test' },
+    });
+
+    expect(response.statusCode).toBe(204);
+    expect((await app.inject({ method: 'GET', url: '/v1/admin/categories', headers: adminHeaders() })).json())
+      .not.toContainEqual(expect.objectContaining({ id: category.id }));
+    expect((await pool.query('select actor_id, action from audit_log where entity_id = $1', [category.id])).rows)
+      .toContainEqual({ actor_id: 'catalog-delete-test', action: 'category.deleted' });
+  });
+
+  it('rejects deleting a category with a child or product', async () => {
+    app = await createApp(appModule);
+    const root = await createCategory(app, { name: 'Занятая категория', slug: 'occupied-category' });
+    await createCategory(app, { name: 'Дочерняя категория', slug: 'occupied-child', parentId: root.id });
+    expect((await app.inject({ method: 'DELETE', url: `/v1/admin/categories/${root.id}`, headers: adminHeaders() })).statusCode).toBe(409);
+
+    const productCategory = await createCategory(app, { name: 'Категория с товаром', slug: 'product-category' });
+    await createProduct(app, { categoryId: productCategory.id, title: 'Тестовый товар', slug: 'blocked-delete-product', description: 'Тестовый товар для запрета удаления категории.', type: 'booking' });
+    expect((await app.inject({ method: 'DELETE', url: `/v1/admin/categories/${productCategory.id}`, headers: adminHeaders() })).statusCode).toBe(409);
+  });
+
   it('creates booking and payable products with their required payment fields', async () => {
     app = await createApp(appModule);
     const category = await createCategory(app, {
@@ -305,7 +333,12 @@ describe('admin catalog API', () => {
     });
 
     expect(products.statusCode).toBe(200);
-    expect(products.json()).toHaveLength(2);
+    expect(products.json()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: booking.json<{ id: string }>().id }),
+        expect.objectContaining({ id: physical.json<{ id: string }>().id }),
+      ]),
+    );
 
     const product = physical.json<{ id: string }>();
     const audit = await pool.query<{
@@ -457,6 +490,24 @@ describe('admin catalog API', () => {
         entity_id: product.id,
       },
     ]);
+  });
+
+  it('deletes a product without orders and records the authenticated actor', async () => {
+    app = await createApp(appModule);
+    const category = await createCategory(app, { name: 'Удаляемые товары', slug: 'deletable-products' });
+    const product = await createProduct(app, { categoryId: category.id, title: 'Удаляемый товар', slug: 'deletable-product', description: 'Тестовый товар без заказов.', type: 'booking' });
+
+    const response = await app.inject({
+      method: 'DELETE',
+      url: `/v1/admin/products/${product.id}`,
+      headers: { ...adminHeaders(), 'x-admin-actor-id': 'catalog-delete-test' },
+    });
+
+    expect(response.statusCode).toBe(204);
+    expect((await app.inject({ method: 'GET', url: '/v1/admin/products', headers: adminHeaders() })).json())
+      .not.toContainEqual(expect.objectContaining({ id: product.id }));
+    expect((await pool.query('select actor_id, action from audit_log where entity_id = $1', [product.id])).rows)
+      .toContainEqual({ actor_id: 'catalog-delete-test', action: 'product.deleted' });
   });
 
   it('exposes only active catalog records to the public API', async () => {

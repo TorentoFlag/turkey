@@ -1,6 +1,9 @@
 import {
   Controller,
+  Delete,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   Patch,
   Post,
@@ -43,5 +46,14 @@ export class AdminProductController {
   ) {
     const payload = await readProductMutationPayload(request);
     return this.catalog.updateProduct(id, actor, payload.input, payload.photo);
+  }
+
+  @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async deleteProduct(
+    @Param('id') id: string,
+    @AdminActor() actor: AuthenticatedAdmin,
+  ) {
+    await this.catalog.deleteProduct(id, actor);
   }
 }

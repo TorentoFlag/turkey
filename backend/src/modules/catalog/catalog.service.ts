@@ -12,6 +12,7 @@ import {
   auditLog,
   categories,
   type Category,
+  orders,
   products,
   type Product,
 } from '../../database/schema/index.js';
@@ -233,6 +234,30 @@ export class CatalogService {
       });
 
       return category;
+    });
+  }
+
+  async deleteCategory(id: string, actor: AuthenticatedAdmin): Promise<void> {
+    const current = await this.findCategory(id);
+    if (!current) throw new NotFoundException('Category was not found.');
+
+    const [child, product] = await Promise.all([
+      this.database.db.select({ id: categories.id }).from(categories).where(eq(categories.parentId, id)).limit(1),
+      this.database.db.select({ id: products.id }).from(products).where(eq(products.categoryId, id)).limit(1),
+    ]);
+    if (child[0] || product[0]) {
+      throw new ConflictException('A category with subcategories or products cannot be deleted.');
+    }
+
+    await this.database.db.transaction(async (transaction) => {
+      await transaction.delete(categories).where(eq(categories.id, id));
+      await transaction.insert(auditLog).values({
+        actorId: actor.actorId,
+        action: 'category.deleted',
+        entityType: 'category',
+        entityId: id,
+        payload: { slug: current.slug, parentId: current.parentId },
+      });
     });
   }
 
@@ -508,6 +533,34 @@ export class CatalogService {
       }
       throw error;
     }
+  }
+
+  async deleteProduct(id: string, actor: AuthenticatedAdmin): Promise<void> {
+    const current = await this.findProduct(id);
+    if (!current) throw new NotFoundException('Product was not found.');
+
+    const linkedOrder = await this.database.db
+      .select({ id: orders.id })
+      .from(orders)
+      .where(eq(orders.productId, id))
+      .limit(1);
+    if (linkedOrder[0]) throw new ConflictException('A product with orders cannot be deleted.');
+
+    await this.database.db.transaction(async (transaction) => {
+      await transaction.delete(products).where(eq(products.id, id));
+      await transaction.insert(auditLog).values({
+        actorId: actor.actorId,
+        action: 'product.deleted',
+        entityType: 'product',
+        entityId: id,
+        payload: { slug: current.slug, categoryId: current.categoryId },
+      });
+    });
+
+    const key = current.imageUrl
+      ? this.media.objectKeyFromManagedImageUrl(current.imageUrl)
+      : null;
+    if (key) await this.media.deleteObject(key).catch(() => undefined);
   }
 
   private async findCategory(id: string): Promise<Category | undefined> {
