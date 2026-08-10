@@ -43,7 +43,7 @@ export { PRODUCT_MEDIA_STORAGE } from './media.constants.js';
         new ProductMediaService(
           storage,
           config.get('MEDIA_PUBLIC_BASE_URL', { infer: true }),
-      ),
+        ),
     },
     CatalogMediaCleanupService,
   ],

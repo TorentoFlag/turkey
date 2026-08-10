@@ -14,10 +14,16 @@ describe('CatalogMediaCleanupService', () => {
     const recentKey =
       'products/33333333-3333-3333-3333-333333333333/cccccccc-cccc-cccc-cccc-cccccccccccc.webp';
     const storage = new FakeProductMediaStorage([
-      { objectKey: referencedKey, lastModified: new Date('2026-08-09T12:00:00Z') },
+      {
+        objectKey: referencedKey,
+        lastModified: new Date('2026-08-09T12:00:00Z'),
+      },
       { objectKey: staleKey, lastModified: new Date('2026-08-09T11:59:59Z') },
       { objectKey: recentKey, lastModified: new Date('2026-08-09T12:00:01Z') },
-      { objectKey: 'other/unrelated.webp', lastModified: new Date('2026-08-01T00:00:00Z') },
+      {
+        objectKey: 'other/unrelated.webp',
+        lastModified: new Date('2026-08-01T00:00:00Z'),
+      },
     ]);
     const database = {
       db: {
@@ -35,9 +41,15 @@ describe('CatalogMediaCleanupService', () => {
       storage,
       'https://turkeyplanners.test/media',
     );
-    const service = new CatalogMediaCleanupService(database as never, media, storage);
+    const service = new CatalogMediaCleanupService(
+      database as never,
+      media,
+      storage,
+    );
 
-    await expect(service.runOnce(new Date('2026-08-10T12:00:00Z'))).resolves.toBe(1);
+    await expect(
+      service.runOnce(new Date('2026-08-10T12:00:00Z')),
+    ).resolves.toBe(1);
     expect(storage.deleted).toEqual([staleKey]);
   });
 });

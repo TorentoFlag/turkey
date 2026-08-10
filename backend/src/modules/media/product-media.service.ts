@@ -93,7 +93,9 @@ export class ProductMediaService {
       return null;
     }
 
-    const key = value.slice(`${this.mediaPublicBaseUrl.replace(/\/$/, '')}/`.length);
+    const key = value.slice(
+      `${this.mediaPublicBaseUrl.replace(/\/$/, '')}/`.length,
+    );
     return /^products\/[0-9a-f-]{36}\/[0-9a-f-]{36}\.webp$/i.test(key)
       ? key
       : null;

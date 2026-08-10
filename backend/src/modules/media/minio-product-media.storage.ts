@@ -12,10 +12,7 @@ export class MinioProductMediaStorage implements ProductMediaStorage {
     private readonly bucket: string,
   ) {}
 
-  async putWebp(input: {
-    objectKey: string;
-    body: Buffer;
-  }): Promise<void> {
+  async putWebp(input: { objectKey: string; body: Buffer }): Promise<void> {
     await this.client.send(
       new PutObjectCommand({
         Bucket: this.bucket,
@@ -49,7 +46,10 @@ export class MinioProductMediaStorage implements ProductMediaStorage {
 
       for (const object of page.Contents ?? []) {
         if (!object.Key || !object.LastModified) continue;
-        objects.push({ objectKey: object.Key, lastModified: object.LastModified });
+        objects.push({
+          objectKey: object.Key,
+          lastModified: object.LastModified,
+        });
       }
 
       continuationToken = page.IsTruncated

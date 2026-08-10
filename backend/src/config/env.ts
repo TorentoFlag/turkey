@@ -21,10 +21,13 @@ const envSchema = z.object({
   MINIO_BUCKET: z.string().trim().min(3).max(63),
   MINIO_ACCESS_KEY: z.string().trim().min(3),
   MINIO_SECRET_KEY: z.string().trim().min(16),
-  MEDIA_PUBLIC_BASE_URL: z.string().url().refine((value) => {
-    const url = new URL(value);
-    return url.protocol === 'https:' && !url.search && !url.hash;
-  }),
+  MEDIA_PUBLIC_BASE_URL: z
+    .string()
+    .url()
+    .refine((value) => {
+      const url = new URL(value);
+      return url.protocol === 'https:' && !url.search && !url.hash;
+    }),
   ARC_API_BASE_URL: z.string().url().default('https://api.arcpay.space/v1'),
   ARC_SECRET_API_KEY: z.string().trim().min(1).optional(),
   ARC_WEBHOOK_SECRET: z.string().trim().min(1).optional(),

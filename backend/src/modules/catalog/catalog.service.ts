@@ -461,38 +461,40 @@ export class CatalogService {
 
     const stored = photo ? await this.media.store(current.id, photo) : null;
     try {
-      const product = await this.database.db.transaction(async (transaction) => {
-        const updated = await transaction
-          .update(products)
-          .set({
-            ...changes,
-            ...(stored ? { imageUrl: stored.imageUrl } : {}),
-            updatedAt: new Date(),
-          })
-          .where(eq(products.id, id))
-          .returning();
-        const product = updated[0];
+      const product = await this.database.db.transaction(
+        async (transaction) => {
+          const updated = await transaction
+            .update(products)
+            .set({
+              ...changes,
+              ...(stored ? { imageUrl: stored.imageUrl } : {}),
+              updatedAt: new Date(),
+            })
+            .where(eq(products.id, id))
+            .returning();
+          const product = updated[0];
 
-        if (!product) {
-          throw new NotFoundException('Product was not found.');
-        }
+          if (!product) {
+            throw new NotFoundException('Product was not found.');
+          }
 
-        await transaction.insert(auditLog).values({
-          actorId: actor.actorId,
-          action: 'product.updated',
-          entityType: 'product',
-          entityId: product.id,
-          payload: {
-            changedFields: [
-              ...Object.keys(changes),
-              ...(stored ? ['imageUrl'] : []),
-            ],
-            imageUploaded: stored !== null,
-          },
-        });
+          await transaction.insert(auditLog).values({
+            actorId: actor.actorId,
+            action: 'product.updated',
+            entityType: 'product',
+            entityId: product.id,
+            payload: {
+              changedFields: [
+                ...Object.keys(changes),
+                ...(stored ? ['imageUrl'] : []),
+              ],
+              imageUploaded: stored !== null,
+            },
+          });
 
-        return product;
-      });
+          return product;
+        },
+      );
       const previousKey = current.imageUrl
         ? this.media.objectKeyFromManagedImageUrl(current.imageUrl)
         : null;

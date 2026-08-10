@@ -38,14 +38,15 @@ describe('ProductMediaService', () => {
     expect(storage.puts).toEqual([
       expect.objectContaining({ objectKey: stored.objectKey }),
     ]);
-    expect(storage.puts[0]?.body.subarray(0, 4).toString('ascii')).toBe(
-      'RIFF',
-    );
+    expect(storage.puts[0]?.body.subarray(0, 4).toString('ascii')).toBe('RIFF');
   });
 
   it.each([
     ['an oversized file', Buffer.alloc(PRODUCT_PHOTO_MAX_BYTES + 1)],
-    ['an SVG payload', Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>')],
+    [
+      'an SVG payload',
+      Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>'),
+    ],
     ['corrupt image bytes', Buffer.from('not an image')],
   ])('rejects %s before storage write', async (_label, buffer) => {
     const storage = new FakeProductMediaStorage();
