@@ -12,7 +12,11 @@ import {
   auditLog,
   categories,
   type Category,
+  destinations,
+  type Destination,
   orders,
+  productDestinations,
+  type ProductDestination,
   products,
   type Product,
 } from '../../database/schema/index.js';
@@ -101,6 +105,29 @@ const updateProductSchema = z
   .strict()
   .refine((value) => Object.keys(value).length > 0);
 
+const createDestinationSchema = z
+  .object({
+    name: z.string().trim().min(1).max(120),
+    slug: z.string().min(1).max(160).regex(slugPattern),
+    region: z.string().trim().min(1).max(120),
+    description: z.string().trim().min(1).max(10_000),
+    imageUrl: z.string().url().nullable().optional(),
+    sortOrder: z.number().int().min(-1_000_000).max(1_000_000).default(0),
+    isActive: z.boolean().default(true),
+  })
+  .strict();
+
+const updateDestinationSchema = createDestinationSchema
+  .partial()
+  .strict()
+  .refine((value) => Object.keys(value).length > 0);
+
+const upsertProductDestinationSchema = z
+  .object({
+    sortOrder: z.number().int().min(-1_000_000).max(1_000_000).default(0),
+  })
+  .strict();
+
 export type PublicCategory = Readonly<{
   id: string;
   name: string;
@@ -119,6 +146,21 @@ export type PublicProduct = Readonly<{
   type: Product['type'];
   priceMinor: number | null;
   currency: string | null;
+}>;
+
+export type PublicDestination = Readonly<{
+  id: string;
+  name: string;
+  slug: string;
+  region: string;
+  description: string;
+  imageUrl: string | null;
+  productCount: number;
+}>;
+
+export type PublicDestinationDetail = Readonly<{
+  destination: PublicDestination;
+  products: PublicProduct[];
 }>;
 
 @Injectable()
@@ -242,11 +284,21 @@ export class CatalogService {
     if (!current) throw new NotFoundException('Category was not found.');
 
     const [child, product] = await Promise.all([
-      this.database.db.select({ id: categories.id }).from(categories).where(eq(categories.parentId, id)).limit(1),
-      this.database.db.select({ id: products.id }).from(products).where(eq(products.categoryId, id)).limit(1),
+      this.database.db
+        .select({ id: categories.id })
+        .from(categories)
+        .where(eq(categories.parentId, id))
+        .limit(1),
+      this.database.db
+        .select({ id: products.id })
+        .from(products)
+        .where(eq(products.categoryId, id))
+        .limit(1),
     ]);
     if (child[0] || product[0]) {
-      throw new ConflictException('A category with subcategories or products cannot be deleted.');
+      throw new ConflictException(
+        'A category with subcategories or products cannot be deleted.',
+      );
     }
 
     await this.database.db.transaction(async (transaction) => {
@@ -266,6 +318,194 @@ export class CatalogService {
       .select()
       .from(products)
       .orderBy(asc(products.sortOrder), asc(products.title));
+  }
+
+  async listDestinations(): Promise<Destination[]> {
+    return this.database.db
+      .select()
+      .from(destinations)
+      .orderBy(asc(destinations.sortOrder), asc(destinations.name));
+  }
+
+  async createDestination(
+    actor: AuthenticatedAdmin,
+    input: unknown,
+  ): Promise<Destination> {
+    const parsed = createDestinationSchema.safeParse(input);
+    if (!parsed.success) {
+      throw new BadRequestException('Invalid destination payload.');
+    }
+
+    return this.database.db.transaction(async (transaction) => {
+      const inserted = await transaction
+        .insert(destinations)
+        .values(parsed.data)
+        .onConflictDoNothing()
+        .returning();
+      const destination = inserted[0];
+      if (!destination) {
+        throw new ConflictException('Destination slug already exists.');
+      }
+
+      await transaction.insert(auditLog).values({
+        actorId: actor.actorId,
+        action: 'destination.created',
+        entityType: 'destination',
+        entityId: destination.id,
+        payload: { slug: destination.slug },
+      });
+      return destination;
+    });
+  }
+
+  async updateDestination(
+    id: string,
+    actor: AuthenticatedAdmin,
+    input: unknown,
+  ): Promise<Destination> {
+    const parsed = updateDestinationSchema.safeParse(input);
+    if (!parsed.success) {
+      throw new BadRequestException('Invalid destination payload.');
+    }
+
+    const current = await this.findDestination(id);
+    if (!current) throw new NotFoundException('Destination was not found.');
+    const changes = parsed.data;
+    if (changes.slug && changes.slug !== current.slug) {
+      await this.assertDestinationSlugAvailable(changes.slug, current.id);
+    }
+
+    return this.database.db.transaction(async (transaction) => {
+      const updated = await transaction
+        .update(destinations)
+        .set({ ...changes, updatedAt: new Date() })
+        .where(eq(destinations.id, id))
+        .returning();
+      const destination = updated[0];
+      if (!destination)
+        throw new NotFoundException('Destination was not found.');
+
+      await transaction.insert(auditLog).values({
+        actorId: actor.actorId,
+        action: 'destination.updated',
+        entityType: 'destination',
+        entityId: destination.id,
+        payload: { changedFields: Object.keys(changes) },
+      });
+      return destination;
+    });
+  }
+
+  async deleteDestination(
+    id: string,
+    actor: AuthenticatedAdmin,
+  ): Promise<void> {
+    const current = await this.findDestination(id);
+    if (!current) throw new NotFoundException('Destination was not found.');
+    const linkedProduct = await this.database.db
+      .select({ productId: productDestinations.productId })
+      .from(productDestinations)
+      .where(eq(productDestinations.destinationId, id))
+      .limit(1);
+    if (linkedProduct[0]) {
+      throw new ConflictException(
+        'A destination with products cannot be deleted.',
+      );
+    }
+
+    await this.database.db.transaction(async (transaction) => {
+      await transaction.delete(destinations).where(eq(destinations.id, id));
+      await transaction.insert(auditLog).values({
+        actorId: actor.actorId,
+        action: 'destination.deleted',
+        entityType: 'destination',
+        entityId: id,
+        payload: { slug: current.slug },
+      });
+    });
+  }
+
+  async upsertProductDestination(
+    destinationId: string,
+    productId: string,
+    actor: AuthenticatedAdmin,
+    input: unknown,
+  ): Promise<ProductDestination> {
+    const parsed = upsertProductDestinationSchema.safeParse(input);
+    if (!parsed.success) {
+      throw new BadRequestException('Invalid destination product payload.');
+    }
+    const [destination, product] = await Promise.all([
+      this.findDestination(destinationId),
+      this.findProduct(productId),
+    ]);
+
+    if (!destination) {
+      throw new NotFoundException('Destination was not found.');
+    }
+    if (!product) {
+      throw new NotFoundException('Product was not found.');
+    }
+    if (!destination.isActive || !product.isActive) {
+      throw new BadRequestException(
+        'Only active destinations and products can be related.',
+      );
+    }
+
+    return this.database.db.transaction(async (transaction) => {
+      const records = await transaction
+        .insert(productDestinations)
+        .values({ destinationId, productId, sortOrder: parsed.data.sortOrder })
+        .onConflictDoUpdate({
+          target: [
+            productDestinations.productId,
+            productDestinations.destinationId,
+          ],
+          set: { sortOrder: parsed.data.sortOrder },
+        })
+        .returning();
+      const membership = records[0];
+      if (!membership)
+        throw new NotFoundException('Product relation was not found.');
+
+      await transaction.insert(auditLog).values({
+        actorId: actor.actorId,
+        action: 'destination.product.upserted',
+        entityType: 'destination',
+        entityId: destinationId,
+        payload: { productId, sortOrder: membership.sortOrder },
+      });
+      return membership;
+    });
+  }
+
+  async deleteProductDestination(
+    destinationId: string,
+    productId: string,
+    actor: AuthenticatedAdmin,
+  ): Promise<void> {
+    await this.database.db.transaction(async (transaction) => {
+      const records = await transaction
+        .delete(productDestinations)
+        .where(
+          and(
+            eq(productDestinations.destinationId, destinationId),
+            eq(productDestinations.productId, productId),
+          ),
+        )
+        .returning();
+      const membership = records[0];
+      if (!membership)
+        throw new NotFoundException('Product relation was not found.');
+
+      await transaction.insert(auditLog).values({
+        actorId: actor.actorId,
+        action: 'destination.product.deleted',
+        entityType: 'destination',
+        entityId: destinationId,
+        payload: { productId },
+      });
+    });
   }
 
   async listPublicCategories(): Promise<PublicCategory[]> {
@@ -301,7 +541,83 @@ export class CatalogService {
       }));
   }
 
-  async listPublicProducts(categorySlug?: string): Promise<PublicProduct[]> {
+  async listPublicDestinations(): Promise<PublicDestination[]> {
+    const records = await this.database.db
+      .select({ destination: destinations, productId: products.id })
+      .from(destinations)
+      .innerJoin(
+        productDestinations,
+        eq(productDestinations.destinationId, destinations.id),
+      )
+      .innerJoin(products, eq(products.id, productDestinations.productId))
+      .innerJoin(categories, eq(categories.id, products.categoryId))
+      .where(
+        and(
+          eq(destinations.isActive, true),
+          eq(products.isActive, true),
+          eq(categories.isActive, true),
+        ),
+      )
+      .orderBy(asc(destinations.sortOrder), asc(destinations.name));
+
+    const result = new Map<string, PublicDestination>();
+    for (const { destination } of records) {
+      const current = result.get(destination.id);
+      result.set(destination.id, {
+        id: destination.id,
+        name: destination.name,
+        slug: destination.slug,
+        region: destination.region,
+        description: destination.description,
+        imageUrl: destination.imageUrl,
+        productCount: (current?.productCount ?? 0) + 1,
+      });
+    }
+    return [...result.values()];
+  }
+
+  async getPublicDestination(slug: string): Promise<PublicDestinationDetail> {
+    const destination = await this.findActiveDestinationBySlug(slug);
+    if (!destination) throw new NotFoundException('Destination was not found.');
+
+    const records = await this.database.db
+      .select({ product: products })
+      .from(productDestinations)
+      .innerJoin(products, eq(products.id, productDestinations.productId))
+      .innerJoin(categories, eq(categories.id, products.categoryId))
+      .where(
+        and(
+          eq(productDestinations.destinationId, destination.id),
+          eq(products.isActive, true),
+          eq(categories.isActive, true),
+        ),
+      )
+      .orderBy(
+        asc(productDestinations.sortOrder),
+        asc(products.sortOrder),
+        asc(products.title),
+      );
+    if (records.length === 0) {
+      throw new NotFoundException('Destination was not found.');
+    }
+    return {
+      destination: {
+        id: destination.id,
+        name: destination.name,
+        slug: destination.slug,
+        region: destination.region,
+        description: destination.description,
+        imageUrl: destination.imageUrl,
+        productCount: records.length,
+      },
+      products: records.map(({ product }) => toPublicProduct(product)),
+    };
+  }
+
+  async listPublicProducts(
+    categorySlug?: string,
+    destinationSlug?: string,
+  ): Promise<PublicProduct[]> {
     const categoryIds = categorySlug
       ? await this.findPublicCategoryFamily(categorySlug)
       : undefined;
@@ -310,19 +626,41 @@ export class CatalogService {
       return [];
     }
 
+    const conditions = [
+      eq(products.isActive, true),
+      eq(categories.isActive, true),
+      ...(categoryIds ? [inArray(products.categoryId, categoryIds)] : []),
+    ];
+
+    if (destinationSlug) {
+      const destination =
+        await this.findActiveDestinationBySlug(destinationSlug);
+      if (!destination) return [];
+
+      const records = await this.database.db
+        .select({ product: products })
+        .from(productDestinations)
+        .innerJoin(products, eq(products.id, productDestinations.productId))
+        .innerJoin(categories, eq(categories.id, products.categoryId))
+        .where(
+          and(
+            eq(productDestinations.destinationId, destination.id),
+            ...conditions,
+          ),
+        )
+        .orderBy(
+          asc(productDestinations.sortOrder),
+          asc(products.sortOrder),
+          asc(products.title),
+        );
+      return records.map(({ product }) => toPublicProduct(product));
+    }
+
     const records = await this.database.db
       .select({ product: products })
       .from(products)
       .innerJoin(categories, eq(products.categoryId, categories.id))
-      .where(
-        categoryIds
-          ? and(
-              eq(products.isActive, true),
-              eq(categories.isActive, true),
-              inArray(products.categoryId, categoryIds),
-            )
-          : and(eq(products.isActive, true), eq(categories.isActive, true)),
-      )
+      .where(and(...conditions))
       .orderBy(asc(products.sortOrder), asc(products.title));
 
     return records.map(({ product }) => toPublicProduct(product));
@@ -539,12 +877,23 @@ export class CatalogService {
     const current = await this.findProduct(id);
     if (!current) throw new NotFoundException('Product was not found.');
 
-    const linkedOrder = await this.database.db
-      .select({ id: orders.id })
-      .from(orders)
-      .where(eq(orders.productId, id))
-      .limit(1);
-    if (linkedOrder[0]) throw new ConflictException('A product with orders cannot be deleted.');
+    const [linkedOrder, linkedDestination] = await Promise.all([
+      this.database.db
+        .select({ id: orders.id })
+        .from(orders)
+        .where(eq(orders.productId, id))
+        .limit(1),
+      this.database.db
+        .select({ destinationId: productDestinations.destinationId })
+        .from(productDestinations)
+        .where(eq(productDestinations.productId, id))
+        .limit(1),
+    ]);
+    if (linkedOrder[0] || linkedDestination[0]) {
+      throw new ConflictException(
+        'A product with orders or direction assignments cannot be deleted.',
+      );
+    }
 
     await this.database.db.transaction(async (transaction) => {
       await transaction.delete(products).where(eq(products.id, id));
@@ -578,6 +927,28 @@ export class CatalogService {
       .select()
       .from(products)
       .where(eq(products.id, id))
+      .limit(1);
+
+    return result[0];
+  }
+
+  private async findDestination(id: string): Promise<Destination | undefined> {
+    const result = await this.database.db
+      .select()
+      .from(destinations)
+      .where(eq(destinations.id, id))
+      .limit(1);
+
+    return result[0];
+  }
+
+  private async findActiveDestinationBySlug(
+    slug: string,
+  ): Promise<Destination | undefined> {
+    const result = await this.database.db
+      .select()
+      .from(destinations)
+      .where(and(eq(destinations.slug, slug), eq(destinations.isActive, true)))
       .limit(1);
 
     return result[0];
@@ -674,6 +1045,21 @@ export class CatalogService {
 
     if (existing[0]) {
       throw new ConflictException('Product slug already exists.');
+    }
+  }
+
+  private async assertDestinationSlugAvailable(
+    slug: string,
+    id: string,
+  ): Promise<void> {
+    const existing = await this.database.db
+      .select({ id: destinations.id })
+      .from(destinations)
+      .where(and(eq(destinations.slug, slug), ne(destinations.id, id)))
+      .limit(1);
+
+    if (existing[0]) {
+      throw new ConflictException('Destination slug already exists.');
     }
   }
 }

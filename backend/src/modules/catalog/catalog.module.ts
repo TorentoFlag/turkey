@@ -3,6 +3,7 @@ import { DatabaseModule } from '../../database/database.module.js';
 import { MediaModule } from '../media/media.module.js';
 import { AdminApiModule } from '../admin-api/admin-api.module.js';
 import { AdminCatalogController } from './admin-catalog.controller.js';
+import { AdminDestinationController } from './admin-destination.controller.js';
 import { AdminProductController } from './admin-product.controller.js';
 import { CatalogService } from './catalog.service.js';
 import { PublicCatalogController } from './public-catalog.controller.js';
@@ -11,6 +12,7 @@ import { PublicCatalogController } from './public-catalog.controller.js';
   imports: [DatabaseModule, AdminApiModule, MediaModule],
   controllers: [
     AdminCatalogController,
+    AdminDestinationController,
     AdminProductController,
     PublicCatalogController,
   ],

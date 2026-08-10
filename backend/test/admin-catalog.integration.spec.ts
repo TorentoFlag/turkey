@@ -234,7 +234,10 @@ describe('admin catalog API', () => {
 
   it('deletes an empty category and records the authenticated actor', async () => {
     app = await createApp(appModule);
-    const category = await createCategory(app, { name: 'Удаляемая категория', slug: 'deletable-category' });
+    const category = await createCategory(app, {
+      name: 'Удаляемая категория',
+      slug: 'deletable-category',
+    });
 
     const response = await app.inject({
       method: 'DELETE',
@@ -243,21 +246,227 @@ describe('admin catalog API', () => {
     });
 
     expect(response.statusCode).toBe(204);
-    expect((await app.inject({ method: 'GET', url: '/v1/admin/categories', headers: adminHeaders() })).json())
-      .not.toContainEqual(expect.objectContaining({ id: category.id }));
-    expect((await pool.query('select actor_id, action from audit_log where entity_id = $1', [category.id])).rows)
-      .toContainEqual({ actor_id: 'catalog-delete-test', action: 'category.deleted' });
+    expect(
+      (
+        await app.inject({
+          method: 'GET',
+          url: '/v1/admin/categories',
+          headers: adminHeaders(),
+        })
+      ).json(),
+    ).not.toContainEqual(expect.objectContaining({ id: category.id }));
+    expect(
+      (
+        await pool.query(
+          'select actor_id, action from audit_log where entity_id = $1',
+          [category.id],
+        )
+      ).rows,
+    ).toContainEqual({
+      actor_id: 'catalog-delete-test',
+      action: 'category.deleted',
+    });
   });
 
   it('rejects deleting a category with a child or product', async () => {
     app = await createApp(appModule);
-    const root = await createCategory(app, { name: 'Занятая категория', slug: 'occupied-category' });
-    await createCategory(app, { name: 'Дочерняя категория', slug: 'occupied-child', parentId: root.id });
-    expect((await app.inject({ method: 'DELETE', url: `/v1/admin/categories/${root.id}`, headers: adminHeaders() })).statusCode).toBe(409);
+    const root = await createCategory(app, {
+      name: 'Занятая категория',
+      slug: 'occupied-category',
+    });
+    await createCategory(app, {
+      name: 'Дочерняя категория',
+      slug: 'occupied-child',
+      parentId: root.id,
+    });
+    expect(
+      (
+        await app.inject({
+          method: 'DELETE',
+          url: `/v1/admin/categories/${root.id}`,
+          headers: adminHeaders(),
+        })
+      ).statusCode,
+    ).toBe(409);
 
-    const productCategory = await createCategory(app, { name: 'Категория с товаром', slug: 'product-category' });
-    await createProduct(app, { categoryId: productCategory.id, title: 'Тестовый товар', slug: 'blocked-delete-product', description: 'Тестовый товар для запрета удаления категории.', type: 'booking' });
-    expect((await app.inject({ method: 'DELETE', url: `/v1/admin/categories/${productCategory.id}`, headers: adminHeaders() })).statusCode).toBe(409);
+    const productCategory = await createCategory(app, {
+      name: 'Категория с товаром',
+      slug: 'product-category',
+    });
+    await createProduct(app, {
+      categoryId: productCategory.id,
+      title: 'Тестовый товар',
+      slug: 'blocked-delete-product',
+      description: 'Тестовый товар для запрета удаления категории.',
+      type: 'booking',
+    });
+    expect(
+      (
+        await app.inject({
+          method: 'DELETE',
+          url: `/v1/admin/categories/${productCategory.id}`,
+          headers: adminHeaders(),
+        })
+      ).statusCode,
+    ).toBe(409);
+  });
+
+  it('publishes an ordered direction collection after an authenticated admin adds a product', async () => {
+    app = await createApp(appModule);
+    const category = await createCategory(app, {
+      name: 'Направления',
+      slug: 'destinations',
+    });
+    const product = await createProduct(app, {
+      categoryId: category.id,
+      title: 'Прогулка по Босфору',
+      slug: 'bosphorus-walk',
+      description: 'Прогулка по набережной и историческим кварталам.',
+      type: 'booking',
+    });
+
+    const direction = await app.inject({
+      method: 'POST',
+      url: '/v1/admin/destinations',
+      headers: adminHeaders(),
+      payload: {
+        name: 'Стамбул',
+        slug: 'istanbul',
+        region: 'Мраморноморский регион',
+        description: 'Город проливов, музеев и кварталов для долгих прогулок.',
+        imageUrl: 'https://images.example.test/destinations/istanbul.jpg',
+        sortOrder: 10,
+        isActive: true,
+      },
+    });
+
+    expect(direction.statusCode).toBe(201);
+    expect(direction.json()).toMatchObject({
+      name: 'Стамбул',
+      slug: 'istanbul',
+      isActive: true,
+    });
+
+    const directionId = direction.json<{ id: string }>().id;
+    const membership = await app.inject({
+      method: 'PUT',
+      url: `/v1/admin/destinations/${directionId}/products/${product.id}`,
+      headers: adminHeaders(),
+      payload: { sortOrder: 20 },
+    });
+
+    expect(membership.statusCode).toBe(200);
+    expect(membership.json()).toMatchObject({
+      destinationId: directionId,
+      productId: product.id,
+      sortOrder: 20,
+    });
+
+    const publicDetail = await app.inject({
+      method: 'GET',
+      url: '/v1/public/destinations/istanbul',
+    });
+
+    expect(publicDetail.statusCode).toBe(200);
+    expect(publicDetail.json()).toMatchObject({
+      destination: {
+        id: directionId,
+        name: 'Стамбул',
+        slug: 'istanbul',
+        productCount: 1,
+      },
+      products: [expect.objectContaining({ id: product.id })],
+    });
+
+    const filteredProducts = await app.inject({
+      method: 'GET',
+      url: '/v1/public/products?destinationSlug=istanbul',
+    });
+    expect(filteredProducts.statusCode).toBe(200);
+    expect(filteredProducts.json()).toEqual([
+      expect.objectContaining({ id: product.id }),
+    ]);
+
+    const deletion = await app.inject({
+      method: 'DELETE',
+      url: `/v1/admin/destinations/${directionId}`,
+      headers: adminHeaders(),
+    });
+    expect(deletion.statusCode).toBe(409);
+
+    const hidden = await app.inject({
+      method: 'PATCH',
+      url: `/v1/admin/destinations/${directionId}`,
+      headers: adminHeaders(),
+      payload: { isActive: false },
+    });
+    expect(hidden.statusCode).toBe(200);
+
+    const publicIndex = await app.inject({
+      method: 'GET',
+      url: '/v1/public/destinations',
+    });
+    expect(publicIndex.statusCode).toBe(200);
+    expect(publicIndex.json()).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: directionId })]),
+    );
+
+    const hiddenDetail = await app.inject({
+      method: 'GET',
+      url: '/v1/public/destinations/istanbul',
+    });
+    expect(hiddenDetail.statusCode).toBe(404);
+
+    const inactiveMembership = await app.inject({
+      method: 'PUT',
+      url: `/v1/admin/destinations/${directionId}/products/${product.id}`,
+      headers: adminHeaders(),
+      payload: { sortOrder: 30 },
+    });
+    expect(inactiveMembership.statusCode).toBe(400);
+  });
+
+  it('does not delete a product while it remains assigned to a direction', async () => {
+    app = await createApp(appModule);
+    const category = await createCategory(app, {
+      name: 'Направления для удаления',
+      slug: 'deletable-destinations',
+    });
+    const product = await createProduct(app, {
+      categoryId: category.id,
+      title: 'Товар направления',
+      slug: 'destination-product',
+      description: 'Товар, который включён в направление.',
+      type: 'booking',
+    });
+    const direction = await app.inject({
+      method: 'POST',
+      url: '/v1/admin/destinations',
+      headers: adminHeaders(),
+      payload: {
+        name: 'Анталья',
+        slug: 'antalya',
+        region: 'Средиземноморский регион',
+        description: 'Курортное направление.',
+      },
+    });
+    expect(direction.statusCode).toBe(201);
+    const directionId = direction.json<{ id: string }>().id;
+
+    const membership = await app.inject({
+      method: 'PUT',
+      url: `/v1/admin/destinations/${directionId}/products/${product.id}`,
+      headers: adminHeaders(),
+      payload: {},
+    });
+    expect(membership.statusCode).toBe(200);
+
+    const deletion = await app.inject({
+      method: 'DELETE',
+      url: `/v1/admin/products/${product.id}`,
+      headers: adminHeaders(),
+    });
+    expect(deletion.statusCode).toBe(409);
   });
 
   it('creates booking and payable products with their required payment fields', async () => {
@@ -494,8 +703,17 @@ describe('admin catalog API', () => {
 
   it('deletes a product without orders and records the authenticated actor', async () => {
     app = await createApp(appModule);
-    const category = await createCategory(app, { name: 'Удаляемые товары', slug: 'deletable-products' });
-    const product = await createProduct(app, { categoryId: category.id, title: 'Удаляемый товар', slug: 'deletable-product', description: 'Тестовый товар без заказов.', type: 'booking' });
+    const category = await createCategory(app, {
+      name: 'Удаляемые товары',
+      slug: 'deletable-products',
+    });
+    const product = await createProduct(app, {
+      categoryId: category.id,
+      title: 'Удаляемый товар',
+      slug: 'deletable-product',
+      description: 'Тестовый товар без заказов.',
+      type: 'booking',
+    });
 
     const response = await app.inject({
       method: 'DELETE',
@@ -504,10 +722,26 @@ describe('admin catalog API', () => {
     });
 
     expect(response.statusCode).toBe(204);
-    expect((await app.inject({ method: 'GET', url: '/v1/admin/products', headers: adminHeaders() })).json())
-      .not.toContainEqual(expect.objectContaining({ id: product.id }));
-    expect((await pool.query('select actor_id, action from audit_log where entity_id = $1', [product.id])).rows)
-      .toContainEqual({ actor_id: 'catalog-delete-test', action: 'product.deleted' });
+    expect(
+      (
+        await app.inject({
+          method: 'GET',
+          url: '/v1/admin/products',
+          headers: adminHeaders(),
+        })
+      ).json(),
+    ).not.toContainEqual(expect.objectContaining({ id: product.id }));
+    expect(
+      (
+        await pool.query(
+          'select actor_id, action from audit_log where entity_id = $1',
+          [product.id],
+        )
+      ).rows,
+    ).toContainEqual({
+      actor_id: 'catalog-delete-test',
+      action: 'product.deleted',
+    });
   });
 
   it('exposes only active catalog records to the public API', async () => {
