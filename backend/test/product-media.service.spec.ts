@@ -24,7 +24,7 @@ describe('ProductMediaService', () => {
       'https://turkeyplanners.test/media',
     );
 
-    const stored = await service.store('product-1', {
+    const stored = await service.store('products', 'product-1', {
       buffer: tinyPng,
       byteLength: tinyPng.byteLength,
     });
@@ -39,6 +39,37 @@ describe('ProductMediaService', () => {
       expect.objectContaining({ objectKey: stored.objectKey }),
     ]);
     expect(storage.puts[0]?.body.subarray(0, 4).toString('ascii')).toBe('RIFF');
+  });
+
+  it('stores a direction cover under the isolated destinations prefix', async () => {
+    const tinyPng = await sharp({
+      create: {
+        width: 1,
+        height: 1,
+        channels: 4,
+        background: { r: 12, g: 34, b: 56, alpha: 1 },
+      },
+    })
+      .png()
+      .toBuffer();
+    const storage = new FakeProductMediaStorage();
+    const service = new ProductMediaService(
+      storage,
+      'https://turkeyplanners.test/media',
+    );
+
+    const stored = await service.store(
+      'destinations',
+      '11111111-1111-1111-1111-111111111111',
+      { buffer: tinyPng, byteLength: tinyPng.byteLength },
+    );
+
+    expect(stored.objectKey).toMatch(
+      /^destinations\/11111111-1111-1111-1111-111111111111\/[0-9a-f-]{36}\.webp$/,
+    );
+    expect(service.objectKeyFromManagedImageUrl(stored.imageUrl)).toBe(
+      stored.objectKey,
+    );
   });
 
   it.each([
@@ -56,7 +87,7 @@ describe('ProductMediaService', () => {
     );
 
     await expect(
-      service.store('product-1', {
+      service.store('products', 'product-1', {
         buffer,
         byteLength: buffer.byteLength,
       }),
@@ -74,7 +105,7 @@ class FakeProductMediaStorage implements ProductMediaStorage {
 
   async deleteObject(): Promise<void> {}
 
-  async listProductObjects() {
+  async listCatalogObjects() {
     return [];
   }
 }

@@ -4,6 +4,8 @@ import sharp from 'sharp';
 
 export const PRODUCT_PHOTO_MAX_BYTES = 5_242_880;
 
+export type CatalogMediaSubject = 'products' | 'destinations';
+
 export type ProductPhotoUpload = Readonly<{
   buffer: Buffer;
   byteLength: number;
@@ -17,7 +19,7 @@ export type StoredProductPhoto = Readonly<{
 export interface ProductMediaStorage {
   putWebp(input: { objectKey: string; body: Buffer }): Promise<void>;
   deleteObject(objectKey: string): Promise<void>;
-  listProductObjects(): Promise<
+  listCatalogObjects(): Promise<
     ReadonlyArray<{ objectKey: string; lastModified: Date }>
   >;
 }
@@ -29,14 +31,15 @@ export class ProductMediaService {
   ) {}
 
   async store(
-    productId: string,
+    subject: CatalogMediaSubject,
+    entityId: string,
     upload: ProductPhotoUpload,
   ): Promise<StoredProductPhoto> {
     if (
       upload.byteLength !== upload.buffer.byteLength ||
       upload.byteLength > PRODUCT_PHOTO_MAX_BYTES
     ) {
-      throw new BadRequestException('Invalid product photo.');
+      throw new BadRequestException('Invalid catalog photo.');
     }
 
     let body: Buffer;
@@ -66,10 +69,10 @@ export class ProductMediaService {
         .webp({ quality: 82 })
         .toBuffer();
     } catch {
-      throw new BadRequestException('Invalid product photo.');
+      throw new BadRequestException('Invalid catalog photo.');
     }
 
-    const objectKey = `products/${productId}/${randomUUID()}.webp`;
+    const objectKey = `${subject}/${entityId}/${randomUUID()}.webp`;
     await this.storage.putWebp({ objectKey, body });
 
     return {
@@ -87,17 +90,20 @@ export class ProductMediaService {
   }
 
   objectKeyFromManagedImageUrl(value: string): string | null {
-    const prefix = `${this.mediaPublicBaseUrl.replace(/\/$/, '')}/products/`;
+    const baseUrl = this.mediaPublicBaseUrl.replace(/\/$/, '');
+    const prefix = `${baseUrl}/`;
 
     if (!value.startsWith(prefix)) {
       return null;
     }
 
-    const key = value.slice(
-      `${this.mediaPublicBaseUrl.replace(/\/$/, '')}/`.length,
+    const key = value.slice(prefix.length);
+    return this.isManagedObjectKey(key) ? key : null;
+  }
+
+  isManagedObjectKey(value: string): boolean {
+    return /^(products|destinations)\/[0-9a-f-]{36}\/[0-9a-f-]{36}\.webp$/i.test(
+      value,
     );
-    return /^products\/[0-9a-f-]{36}\/[0-9a-f-]{36}\.webp$/i.test(key)
-      ? key
-      : null;
   }
 }

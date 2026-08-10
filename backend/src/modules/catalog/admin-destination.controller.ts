@@ -9,14 +9,17 @@ import {
   Patch,
   Post,
   Put,
+  Req,
   UseGuards,
 } from '@nestjs/common';
+import type { FastifyRequest } from 'fastify';
 import {
   AdminActor,
   AdminApiKeyGuard,
 } from '../admin-api/admin-api-key.guard.js';
 import type { AuthenticatedAdmin } from '../admin-api/admin-api-auth.js';
 import { CatalogService } from './catalog.service.js';
+import { readDestinationMutationPayload } from './product-multipart.input.js';
 
 @Controller('v1/admin/destinations')
 @UseGuards(AdminApiKeyGuard)
@@ -29,20 +32,27 @@ export class AdminDestinationController {
   }
 
   @Post()
-  createDestination(
+  async createDestination(
     @AdminActor() actor: AuthenticatedAdmin,
-    @Body() body: unknown,
+    @Req() request: FastifyRequest,
   ) {
-    return this.catalog.createDestination(actor, body);
+    const payload = await readDestinationMutationPayload(request);
+    return this.catalog.createDestination(actor, payload.input, payload.photo);
   }
 
   @Patch(':id')
-  updateDestination(
+  async updateDestination(
     @Param('id') id: string,
     @AdminActor() actor: AuthenticatedAdmin,
-    @Body() body: unknown,
+    @Req() request: FastifyRequest,
   ) {
-    return this.catalog.updateDestination(id, actor, body);
+    const payload = await readDestinationMutationPayload(request);
+    return this.catalog.updateDestination(
+      id,
+      actor,
+      payload.input,
+      payload.photo,
+    );
   }
 
   @Delete(':id')

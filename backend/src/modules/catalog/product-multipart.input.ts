@@ -10,6 +10,19 @@ export type ProductMutationPayload = Readonly<{
 export async function readProductMutationPayload(
   request: FastifyRequest,
 ): Promise<ProductMutationPayload> {
+  return readCatalogMutationPayload(request, 'product');
+}
+
+export async function readDestinationMutationPayload(
+  request: FastifyRequest,
+): Promise<ProductMutationPayload> {
+  return readCatalogMutationPayload(request, 'destination');
+}
+
+async function readCatalogMutationPayload(
+  request: FastifyRequest,
+  fieldName: 'product' | 'destination',
+): Promise<ProductMutationPayload> {
   if (!request.isMultipart()) {
     return { input: request.body, photo: null };
   }
@@ -20,7 +33,7 @@ export async function readProductMutationPayload(
   try {
     for await (const part of request.parts()) {
       if (part.type === 'field') {
-        if (part.fieldname !== 'product' || product !== undefined) {
+        if (part.fieldname !== fieldName || product !== undefined) {
           throw new Error('Invalid multipart fields.');
         }
         const value = Buffer.isBuffer(part.value)

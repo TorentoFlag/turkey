@@ -33,7 +33,7 @@ describe('MinioProductMediaStorage', () => {
     });
   });
 
-  it('lists only the literal products prefix across pages', async () => {
+  it('lists only the literal products and destinations prefixes across pages', async () => {
     const send = vi
       .fn()
       .mockResolvedValueOnce({
@@ -54,13 +54,22 @@ describe('MinioProductMediaStorage', () => {
           },
         ],
         IsTruncated: false,
+      })
+      .mockResolvedValueOnce({
+        Contents: [
+          {
+            Key: 'destinations/destination-1/c.webp',
+            LastModified: new Date('2026-01-03'),
+          },
+        ],
+        IsTruncated: false,
       });
     const storage = new MinioProductMediaStorage(
       { send } as never,
       'turkiye-catalog-media',
     );
 
-    await expect(storage.listProductObjects()).resolves.toEqual([
+    await expect(storage.listCatalogObjects()).resolves.toEqual([
       {
         objectKey: 'products/product-1/a.webp',
         lastModified: new Date('2026-01-01'),
@@ -68,6 +77,10 @@ describe('MinioProductMediaStorage', () => {
       {
         objectKey: 'products/product-2/b.webp',
         lastModified: new Date('2026-01-02'),
+      },
+      {
+        objectKey: 'destinations/destination-1/c.webp',
+        lastModified: new Date('2026-01-03'),
       },
     ]);
     expect(send).toHaveBeenNthCalledWith(1, expect.any(ListObjectsV2Command));
@@ -77,6 +90,10 @@ describe('MinioProductMediaStorage', () => {
     });
     expect(send.mock.calls[1]?.[0].input).toMatchObject({
       ContinuationToken: 'next',
+    });
+    expect(send.mock.calls[2]?.[0].input).toMatchObject({
+      Bucket: 'turkiye-catalog-media',
+      Prefix: 'destinations/',
     });
   });
 });

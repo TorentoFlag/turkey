@@ -4,7 +4,10 @@ import {
   PutObjectCommand,
   type S3Client,
 } from '@aws-sdk/client-s3';
-import type { ProductMediaStorage } from './product-media.service.js';
+import type {
+  CatalogMediaSubject,
+  ProductMediaStorage,
+} from './product-media.service.js';
 
 export class MinioProductMediaStorage implements ProductMediaStorage {
   constructor(
@@ -29,17 +32,29 @@ export class MinioProductMediaStorage implements ProductMediaStorage {
     );
   }
 
-  async listProductObjects(): Promise<
+  async listCatalogObjects(): Promise<
     ReadonlyArray<{ objectKey: string; lastModified: Date }>
   > {
     const objects: Array<{ objectKey: string; lastModified: Date }> = [];
+
+    for (const subject of ['products', 'destinations'] as const) {
+      await this.appendSubjectObjects(objects, subject);
+    }
+
+    return objects;
+  }
+
+  private async appendSubjectObjects(
+    objects: Array<{ objectKey: string; lastModified: Date }>,
+    subject: CatalogMediaSubject,
+  ): Promise<void> {
     let continuationToken: string | undefined;
 
     do {
       const page = await this.client.send(
         new ListObjectsV2Command({
           Bucket: this.bucket,
-          Prefix: 'products/',
+          Prefix: `${subject}/`,
           ContinuationToken: continuationToken,
         }),
       );
@@ -56,7 +71,5 @@ export class MinioProductMediaStorage implements ProductMediaStorage {
         ? page.NextContinuationToken
         : undefined;
     } while (continuationToken);
-
-    return objects;
   }
 }

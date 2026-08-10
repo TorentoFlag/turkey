@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { DatabaseService } from '../../database/database.service.js';
-import { products } from '../../database/schema/index.js';
+import { destinations, products } from '../../database/schema/index.js';
 import { PRODUCT_MEDIA_STORAGE } from './media.constants.js';
 import {
   ProductMediaService,
@@ -19,9 +19,13 @@ export class CatalogMediaCleanupService {
   ) {}
 
   async runOnce(now = new Date()): Promise<number> {
-    const records = await this.database.db
-      .select({ imageUrl: products.imageUrl })
-      .from(products);
+    const [productRecords, destinationRecords] = await Promise.all([
+      this.database.db.select({ imageUrl: products.imageUrl }).from(products),
+      this.database.db
+        .select({ imageUrl: destinations.imageUrl })
+        .from(destinations),
+    ]);
+    const records = [...productRecords, ...destinationRecords];
     const referencedKeys = new Set(
       records.flatMap(({ imageUrl }) => {
         if (!imageUrl) return [];
@@ -30,12 +34,12 @@ export class CatalogMediaCleanupService {
       }),
     );
     const orphanedBefore = now.getTime() - ORPHAN_GRACE_MS;
-    const objects = await this.storage.listProductObjects();
+    const objects = await this.storage.listCatalogObjects();
     let deleted = 0;
 
     for (const object of objects) {
       if (
-        !object.objectKey.startsWith('products/') ||
+        !this.media.isManagedObjectKey(object.objectKey) ||
         referencedKeys.has(object.objectKey) ||
         object.lastModified.getTime() > orphanedBefore
       ) {

@@ -330,38 +330,56 @@ export class CatalogService {
   async createDestination(
     actor: AuthenticatedAdmin,
     input: unknown,
+    photo: ProductPhotoUpload | null = null,
   ): Promise<Destination> {
     const parsed = createDestinationSchema.safeParse(input);
     if (!parsed.success) {
       throw new BadRequestException('Invalid destination payload.');
     }
 
-    return this.database.db.transaction(async (transaction) => {
-      const inserted = await transaction
-        .insert(destinations)
-        .values(parsed.data)
-        .onConflictDoNothing()
-        .returning();
-      const destination = inserted[0];
-      if (!destination) {
-        throw new ConflictException('Destination slug already exists.');
-      }
+    const destinationId = photo ? randomUUID() : undefined;
+    const stored =
+      photo && destinationId
+        ? await this.media.store('destinations', destinationId, photo)
+        : null;
+    try {
+      return await this.database.db.transaction(async (transaction) => {
+        const inserted = await transaction
+          .insert(destinations)
+          .values({
+            ...parsed.data,
+            ...(destinationId ? { id: destinationId } : {}),
+            ...(stored ? { imageUrl: stored.imageUrl } : {}),
+          })
+          .onConflictDoNothing()
+          .returning();
+        const destination = inserted[0];
+        if (!destination) {
+          throw new ConflictException('Destination slug already exists.');
+        }
 
-      await transaction.insert(auditLog).values({
-        actorId: actor.actorId,
-        action: 'destination.created',
-        entityType: 'destination',
-        entityId: destination.id,
-        payload: { slug: destination.slug },
+        await transaction.insert(auditLog).values({
+          actorId: actor.actorId,
+          action: 'destination.created',
+          entityType: 'destination',
+          entityId: destination.id,
+          payload: { slug: destination.slug, imageUploaded: stored !== null },
+        });
+        return destination;
       });
-      return destination;
-    });
+    } catch (error) {
+      if (stored) {
+        await this.media.deleteObject(stored.objectKey).catch(() => undefined);
+      }
+      throw error;
+    }
   }
 
   async updateDestination(
     id: string,
     actor: AuthenticatedAdmin,
     input: unknown,
+    photo: ProductPhotoUpload | null = null,
   ): Promise<Destination> {
     const parsed = updateDestinationSchema.safeParse(input);
     if (!parsed.success) {
@@ -375,25 +393,55 @@ export class CatalogService {
       await this.assertDestinationSlugAvailable(changes.slug, current.id);
     }
 
-    return this.database.db.transaction(async (transaction) => {
-      const updated = await transaction
-        .update(destinations)
-        .set({ ...changes, updatedAt: new Date() })
-        .where(eq(destinations.id, id))
-        .returning();
-      const destination = updated[0];
-      if (!destination)
-        throw new NotFoundException('Destination was not found.');
+    const stored = photo
+      ? await this.media.store('destinations', id, photo)
+      : null;
+    try {
+      const destination = await this.database.db.transaction(
+        async (transaction) => {
+          const updated = await transaction
+            .update(destinations)
+            .set({
+              ...changes,
+              ...(stored ? { imageUrl: stored.imageUrl } : {}),
+              updatedAt: new Date(),
+            })
+            .where(eq(destinations.id, id))
+            .returning();
+          const destination = updated[0];
+          if (!destination) {
+            throw new NotFoundException('Destination was not found.');
+          }
 
-      await transaction.insert(auditLog).values({
-        actorId: actor.actorId,
-        action: 'destination.updated',
-        entityType: 'destination',
-        entityId: destination.id,
-        payload: { changedFields: Object.keys(changes) },
-      });
+          await transaction.insert(auditLog).values({
+            actorId: actor.actorId,
+            action: 'destination.updated',
+            entityType: 'destination',
+            entityId: destination.id,
+            payload: {
+              changedFields: [
+                ...Object.keys(changes),
+                ...(stored ? ['imageUrl'] : []),
+              ],
+              imageUploaded: stored !== null,
+            },
+          });
+          return destination;
+        },
+      );
+      const previousKey = current.imageUrl
+        ? this.media.objectKeyFromManagedImageUrl(current.imageUrl)
+        : null;
+      if (stored && previousKey) {
+        await this.media.deleteObject(previousKey).catch(() => undefined);
+      }
       return destination;
-    });
+    } catch (error) {
+      if (stored) {
+        await this.media.deleteObject(stored.objectKey).catch(() => undefined);
+      }
+      throw error;
+    }
   }
 
   async deleteDestination(
@@ -423,6 +471,11 @@ export class CatalogService {
         payload: { slug: current.slug },
       });
     });
+
+    const key = current.imageUrl
+      ? this.media.objectKeyFromManagedImageUrl(current.imageUrl)
+      : null;
+    if (key) await this.media.deleteObject(key).catch(() => undefined);
   }
 
   async upsertProductDestination(
@@ -740,7 +793,9 @@ export class CatalogService {
 
     const productId = photo ? randomUUID() : undefined;
     const stored =
-      photo && productId ? await this.media.store(productId, photo) : null;
+      photo && productId
+        ? await this.media.store('products', productId, photo)
+        : null;
     try {
       return await this.database.db.transaction(async (transaction) => {
         const inserted = await transaction
@@ -822,7 +877,9 @@ export class CatalogService {
       await this.assertProductSlugAvailable(changes.slug, current.id);
     }
 
-    const stored = photo ? await this.media.store(current.id, photo) : null;
+    const stored = photo
+      ? await this.media.store('products', current.id, photo)
+      : null;
     try {
       const product = await this.database.db.transaction(
         async (transaction) => {

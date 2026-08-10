@@ -644,6 +644,93 @@ describe('admin catalog API', () => {
     expect(putPhoto).toHaveBeenCalledTimes(1);
   });
 
+  it('creates a direction from one multipart cover and rejects a competing image URL', async () => {
+    const putPhoto = vi
+      .spyOn(MinioProductMediaStorage.prototype, 'putWebp')
+      .mockResolvedValue(undefined);
+    const deletePhoto = vi
+      .spyOn(MinioProductMediaStorage.prototype, 'deleteObject')
+      .mockResolvedValue(undefined);
+    app = await createApp(appModule);
+    const cover = await sharp({
+      create: {
+        width: 3,
+        height: 2,
+        channels: 3,
+        background: { r: 40, g: 80, b: 120 },
+      },
+    })
+      .png()
+      .toBuffer();
+    const directionInput = {
+      name: 'Каппадокия',
+      slug: 'cappadocia',
+      region: 'Центральная Анатолия',
+      description: 'Долины, воздушные шары и пещерные города.',
+    };
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v1/admin/destinations',
+      headers: {
+        ...adminHeaders(),
+        'content-type': multipartContentType(),
+      },
+      payload: multipartDestinationPayload(directionInput, cover),
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(response.json()).toMatchObject({
+      slug: 'cappadocia',
+      imageUrl: expect.stringMatching(
+        /^https:\/\/turkeyplanners\.test\/media\/destinations\/[0-9a-f-]{36}\/[0-9a-f-]{36}\.webp$/i,
+      ),
+    });
+    expect(putPhoto).toHaveBeenCalledWith(
+      expect.objectContaining({
+        objectKey: expect.stringMatching(/^destinations\/[0-9a-f-]{36}\//i),
+        body: expect.any(Buffer),
+      }),
+    );
+
+    const duplicate = await app.inject({
+      method: 'POST',
+      url: '/v1/admin/destinations',
+      headers: {
+        ...adminHeaders(),
+        'content-type': multipartContentType(),
+      },
+      payload: multipartDestinationPayload(directionInput, cover),
+    });
+
+    expect(duplicate.statusCode).toBe(409);
+    expect(deletePhoto).toHaveBeenCalledWith(
+      expect.stringMatching(
+        /^destinations\/[0-9a-f-]{36}\/[0-9a-f-]{36}\.webp$/i,
+      ),
+    );
+
+    const conflicting = await app.inject({
+      method: 'POST',
+      url: '/v1/admin/destinations',
+      headers: {
+        ...adminHeaders(),
+        'content-type': multipartContentType(),
+      },
+      payload: multipartDestinationPayload(
+        {
+          ...directionInput,
+          slug: 'cappadocia-conflicting-cover',
+          imageUrl: 'https://images.example.test/legacy.jpg',
+        },
+        cover,
+      ),
+    });
+
+    expect(conflicting.statusCode).toBe(400);
+    expect(putPhoto).toHaveBeenCalledTimes(2);
+  });
+
   it('updates and deactivates a product while preserving its type rules', async () => {
     app = await createApp(appModule);
     const category = await createCategory(app, {
@@ -1804,9 +1891,24 @@ function multipartProductPayload(
   product: Record<string, unknown>,
   photo: Buffer,
 ): Buffer {
+  return multipartCatalogPayload('product', product, photo);
+}
+
+function multipartDestinationPayload(
+  destination: Record<string, unknown>,
+  photo: Buffer,
+): Buffer {
+  return multipartCatalogPayload('destination', destination, photo);
+}
+
+function multipartCatalogPayload(
+  fieldName: 'product' | 'destination',
+  value: Record<string, unknown>,
+  photo: Buffer,
+): Buffer {
   return Buffer.concat([
     Buffer.from(
-      `--${multipartBoundary}\r\nContent-Disposition: form-data; name="product"\r\nContent-Type: application/json\r\n\r\n${JSON.stringify(product)}\r\n--${multipartBoundary}\r\nContent-Disposition: form-data; name="photo"; filename="product.png"\r\nContent-Type: image/png\r\n\r\n`,
+      `--${multipartBoundary}\r\nContent-Disposition: form-data; name="${fieldName}"\r\nContent-Type: application/json\r\n\r\n${JSON.stringify(value)}\r\n--${multipartBoundary}\r\nContent-Disposition: form-data; name="photo"; filename="${fieldName}.png"\r\nContent-Type: image/png\r\n\r\n`,
     ),
     photo,
     Buffer.from(`\r\n--${multipartBoundary}--\r\n`),
