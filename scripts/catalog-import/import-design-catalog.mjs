@@ -8,13 +8,28 @@ import {
 } from "./design-catalog-source.mjs";
 
 const maxPhotoBytes = 5_242_880;
-const specialOversizeAsset = path.join(
-  "frontend",
-  "public",
-  "images",
-  "catalog-generated",
-  "bursa-koza-han-market.jpg",
-);
+const convertedAssetNames = new Map([
+  [
+    path.join(
+      "frontend",
+      "public",
+      "images",
+      "catalog-generated",
+      "bursa-koza-han-market.jpg",
+    ),
+    "bursa-koza-han-market.webp",
+  ],
+  [
+    path.join(
+      "frontend",
+      "public",
+      "images",
+      "home-sources",
+      "cappadocia-cave-hotel.avif",
+    ),
+    "cappadocia-cave-hotel.webp",
+  ],
+]);
 const managedImagePattern = /\/media\/products\/[0-9a-f-]+\/[0-9a-f-]+\.webp$/i;
 const contentTypeByExtension = new Map([
   [".jpg", "image/jpeg"],
@@ -149,11 +164,11 @@ export async function validateAllAssets(plan, imageRoot) {
     const filePath = resolveAssetPath(product.assetPath, imageRoot);
     const file = await stat(filePath);
     if (!file.isFile()) throw new Error(`missing photo asset: ${product.assetPath}`);
-    if (file.size <= maxPhotoBytes) {
+    if (file.size <= maxPhotoBytes && !convertedAssetNames.has(product.assetPath)) {
       assertSupportedAsset(product.assetPath);
       continue;
     }
-    if (product.assetPath !== specialOversizeAsset) {
+    if (!convertedAssetNames.has(product.assetPath)) {
       throw new Error(`photo asset exceeds 5 MiB: ${product.assetPath}`);
     }
     await readPhoto(product, imageRoot);
@@ -163,29 +178,41 @@ export async function validateAllAssets(plan, imageRoot) {
 export async function readPhoto(product, imageRoot) {
   const filePath = resolveAssetPath(product.assetPath, imageRoot);
   const source = await readFile(filePath);
-  const contentType = assertSupportedAsset(product.assetPath);
-  if (source.byteLength <= maxPhotoBytes) {
+  const convertedFilename = convertedAssetNames.get(product.assetPath);
+  const contentType = contentTypeByExtension.get(
+    path.extname(product.assetPath).toLowerCase(),
+  );
+  if (source.byteLength <= maxPhotoBytes && contentType && !convertedFilename) {
     return {
       filename: path.basename(product.assetPath),
       contentType,
       bytes: source,
     };
   }
-  if (product.assetPath !== specialOversizeAsset) {
+  if (!convertedFilename) {
+    if (!contentType) throw new Error(`Unsupported photo asset: ${product.assetPath}`);
     throw new Error(`photo asset exceeds 5 MiB: ${product.assetPath}`);
   }
 
   const sharp = await loadSharp();
-  const bytes = await sharp(source, { failOn: "error", limitInputPixels: 40_000_000 })
+  const bytes = await sharp(source, {
+    failOn: "error",
+    limitInputPixels: 40_000_000,
+  })
     .rotate()
-    .resize({ width: 2560, height: 2560, fit: "inside", withoutEnlargement: true })
+    .resize({
+      width: 2560,
+      height: 2560,
+      fit: "inside",
+      withoutEnlargement: true,
+    })
     .webp({ quality: 82 })
     .toBuffer();
   if (bytes.byteLength > maxPhotoBytes) {
     throw new Error("Compressed Bursa product photo exceeds 5 MiB.");
   }
   return {
-    filename: "bursa-koza-han-market.webp",
+    filename: convertedFilename,
     contentType: "image/webp",
     bytes,
   };
@@ -250,12 +277,6 @@ export function compareCurrentCatalog(plan, { categories, products }) {
   return { missingCategories, existingCategories, missingProducts, existingProducts, conflicts };
 }
 
-async function loadSharp() {
-  const packageJsonPath = process.env.CATALOG_IMPORT_SHARP_PACKAGE_JSON ??
-    (await pathExists("/app/package.json") ? "/app/package.json" : path.resolve("backend/package.json"));
-  return createRequire(packageJsonPath)("sharp");
-}
-
 function resolveAssetPath(assetPath, imageRoot) {
   const root = path.resolve(imageRoot);
   const resolved = path.resolve(root, assetPath);
@@ -269,6 +290,14 @@ function assertSupportedAsset(assetPath) {
   const contentType = contentTypeByExtension.get(path.extname(assetPath).toLowerCase());
   if (!contentType) throw new Error(`Unsupported photo asset: ${assetPath}`);
   return contentType;
+}
+
+async function loadSharp() {
+  const packageJsonPath = process.env.CATALOG_IMPORT_SHARP_PACKAGE_JSON ??
+    (await pathExists("/app/package.json")
+      ? "/app/package.json"
+      : path.resolve("backend/package.json"));
+  return createRequire(packageJsonPath)("sharp");
 }
 
 async function pathExists(filePath) {

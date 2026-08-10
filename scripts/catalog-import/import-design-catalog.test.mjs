@@ -1,10 +1,17 @@
 import assert from "node:assert/strict";
+import path from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 import {
+  readPhoto,
   runImport,
 } from "./import-design-catalog.mjs";
 
 const silent = { info() {} };
+const repositoryRoot = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../..",
+);
 
 const root = {
   id: "root-id",
@@ -140,6 +147,34 @@ test("uploads one photo and creates only missing records in source order", async
     missingCategories: 1,
     missingProducts: 1,
   });
+});
+
+test("converts only the oversized Bursa image before multipart upload", async () => {
+  const photo = await readPhoto(
+    {
+      assetPath:
+        "frontend/public/images/catalog-generated/bursa-koza-han-market.jpg",
+    },
+    repositoryRoot,
+  );
+
+  assert.equal(photo.filename, "bursa-koza-han-market.webp");
+  assert.equal(photo.contentType, "image/webp");
+  assert.ok(photo.bytes.byteLength <= 5_242_880);
+});
+
+test("converts the sole AVIF design image before multipart upload", async () => {
+  const photo = await readPhoto(
+    {
+      assetPath:
+        "frontend/public/images/home-sources/cappadocia-cave-hotel.avif",
+    },
+    repositoryRoot,
+  );
+
+  assert.equal(photo.filename, "cappadocia-cave-hotel.webp");
+  assert.equal(photo.contentType, "image/webp");
+  assert.ok(photo.bytes.byteLength <= 5_242_880);
 });
 
 function toPlanCategory(category) {
