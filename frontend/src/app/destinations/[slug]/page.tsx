@@ -4,24 +4,25 @@ import { notFound } from "next/navigation";
 
 import { MarketplaceBreadcrumbs } from "@/components/marketplace/MarketplaceBreadcrumbs";
 import styles from "@/components/marketplace/destination.module.css";
-import { marketplaceDestinations } from "@/data/marketplace";
-import { sitePath } from "@/lib/sitePath";
+import { marketplaceApi } from "@/lib/marketplace/api";
+import { displayProductPrice } from "@/lib/marketplace/product-price";
 
 type DestinationPageProps = {
   params: Promise<{ slug: string }>;
 };
 
-export function generateStaticParams() {
-  return marketplaceDestinations.map(({ slug }) => ({ slug }));
-}
+export const dynamic = "force-dynamic";
 
-export default async function DestinationPage({ params }: DestinationPageProps) {
+export default async function DestinationPage({
+  params,
+}: DestinationPageProps) {
   const { slug } = await params;
-  const destination = marketplaceDestinations.find((item) => item.slug === slug);
+  const detail = await marketplaceApi.destination(slug).catch(() => null);
 
-  if (!destination) notFound();
+  if (!detail) notFound();
+  const { destination, products } = detail;
 
-  const catalogHref = "/catalog";
+  const catalogHref = `/catalog?destination=${encodeURIComponent(destination.slug)}`;
 
   return (
     <section className={styles.destinationDetail}>
@@ -42,13 +43,16 @@ export default async function DestinationPage({ params }: DestinationPageProps) 
           </div>
         </div>
         <div className={styles.destinationHeroImage}>
-          <Image
-            alt="Декоративная текстура травертина"
-            fill
-            priority
-            sizes="(max-width: 960px) 100vw, 50vw"
-            src={sitePath(destination.imagePath)}
-          />
+          {destination.imageUrl ? (
+            <Image
+              alt={`Обложка направления ${destination.name}`}
+              fill
+              priority
+              sizes="(max-width: 960px) 100vw, 50vw"
+              src={destination.imageUrl}
+              unoptimized
+            />
+          ) : null}
         </div>
       </div>
 
@@ -63,9 +67,33 @@ export default async function DestinationPage({ params }: DestinationPageProps) 
           </Link>
         </header>
 
-        <p className={styles.emptyDestinationServices}>
-          Каталог заполняется через админку. Выберите актуальный товар или услугу в общем каталоге.
-        </p>
+        <div className={styles.destinationServiceList}>
+          {products.map((product) => (
+            <article className={styles.destinationService} key={product.id}>
+              <Link href={`/services/${product.slug}`}>
+                <div>
+                  {product.imageUrl ? (
+                    <Image
+                      alt=""
+                      fill
+                      sizes="(max-width: 720px) 100vw, (max-width: 960px) 50vw, 33vw"
+                      src={product.imageUrl}
+                      unoptimized
+                    />
+                  ) : null}
+                </div>
+                <p>
+                  {product.type === "booking"
+                    ? "Бронирование"
+                    : "Оплата онлайн"}
+                </p>
+                <h4>{product.title}</h4>
+                <span>{product.description}</span>
+                <strong>{displayProductPrice(product)}</strong>
+              </Link>
+            </article>
+          ))}
+        </div>
       </div>
     </section>
   );

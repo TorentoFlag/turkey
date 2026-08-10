@@ -20,6 +20,32 @@ export type ApiProduct = Readonly<{
   currency: string | null;
 }>;
 
+export type ApiDestinationProduct = Readonly<{
+  id: string;
+  title: string;
+  slug: string;
+  description: string;
+  imageUrl: string | null;
+  type: ProductType;
+  priceMinor: number | null;
+  currency: string | null;
+}>;
+
+export type ApiDestination = Readonly<{
+  id: string;
+  name: string;
+  slug: string;
+  region: string;
+  description: string;
+  imageUrl: string | null;
+  productCount: number;
+}>;
+
+export type ApiDestinationDetail = Readonly<{
+  destination: ApiDestination;
+  products: ApiProduct[];
+}>;
+
 export type ApiOrder = Readonly<{
   id: string;
   product: Readonly<{
@@ -161,11 +187,20 @@ export const marketplaceApi = {
   categories() {
     return request<ApiCategory[]>("/v1/public/categories");
   },
-  products(categorySlug?: string) {
-    const query = categorySlug
-      ? `?categorySlug=${encodeURIComponent(categorySlug)}`
-      : "";
-    return request<ApiProduct[]>(`/v1/public/products${query}`);
+  products(categorySlug?: string, destinationSlug?: string) {
+    const query = new URLSearchParams();
+    if (categorySlug) query.set("categorySlug", categorySlug);
+    if (destinationSlug) query.set("destinationSlug", destinationSlug);
+    const suffix = query.size ? `?${query.toString()}` : "";
+    return request<ApiProduct[]>(`/v1/public/products${suffix}`);
+  },
+  destinations() {
+    return request<ApiDestination[]>("/v1/public/destinations");
+  },
+  destination(slug: string) {
+    return request<ApiDestinationDetail>(
+      `/v1/public/destinations/${encodeURIComponent(slug)}`,
+    );
   },
   product(slug: string) {
     return request<ApiProduct>(
