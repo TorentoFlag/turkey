@@ -362,6 +362,27 @@ describe('admin catalog API', () => {
       sortOrder: 20,
     });
 
+    const adminDirections = await app.inject({
+      method: 'GET',
+      url: '/v1/admin/destinations',
+      headers: adminHeaders(),
+    });
+    expect(adminDirections.statusCode).toBe(200);
+    expect(adminDirections.json()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: directionId,
+          products: [
+            expect.objectContaining({
+              destinationId: directionId,
+              productId: product.id,
+              sortOrder: 20,
+            }),
+          ],
+        }),
+      ]),
+    );
+
     const publicDetail = await app.inject({
       method: 'GET',
       url: '/v1/public/destinations/istanbul',

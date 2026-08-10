@@ -163,6 +163,11 @@ export type PublicDestinationDetail = Readonly<{
   products: PublicProduct[];
 }>;
 
+export type CatalogDestination = Destination &
+  Readonly<{
+    products: ProductDestination[];
+  }>;
+
 @Injectable()
 export class CatalogService {
   constructor(
@@ -320,11 +325,31 @@ export class CatalogService {
       .orderBy(asc(products.sortOrder), asc(products.title));
   }
 
-  async listDestinations(): Promise<Destination[]> {
-    return this.database.db
-      .select()
+  async listDestinations(): Promise<CatalogDestination[]> {
+    const records = await this.database.db
+      .select({ destination: destinations, membership: productDestinations })
       .from(destinations)
-      .orderBy(asc(destinations.sortOrder), asc(destinations.name));
+      .leftJoin(
+        productDestinations,
+        eq(productDestinations.destinationId, destinations.id),
+      )
+      .orderBy(
+        asc(destinations.sortOrder),
+        asc(destinations.name),
+        asc(productDestinations.sortOrder),
+      );
+    const result = new Map<string, CatalogDestination>();
+
+    for (const { destination, membership } of records) {
+      const current = result.get(destination.id) ?? {
+        ...destination,
+        products: [],
+      };
+      if (membership) current.products.push(membership);
+      result.set(destination.id, current);
+    }
+
+    return [...result.values()];
   }
 
   async createDestination(
