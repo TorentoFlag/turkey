@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
+import { resolve } from "node:path";
 
 const require = createRequire(import.meta.url);
 const typescript = require("typescript");
@@ -46,3 +47,14 @@ assert.match(terms, /17\. КОНТАКТНАЯ ИНФОРМАЦИЯ/);
 assert.match(privacy, /Personal Data Protection Act B\.E\. 2562 \(2019\) \(PDPA\)/);
 assert.match(privacy, /14\. КОНТАКТНАЯ ИНФОРМАЦИЯ/);
 assert.match(privacy, /supp@turkeyplanners\.com/);
+
+const legalRoutes = [
+  ["src/app/legal/terms/page.tsx", "terms"],
+  ["src/app/legal/privacy/page.tsx", "privacy"],
+  ["src/app/privacy/page.tsx", "privacy alias"],
+];
+
+for (const [path, label] of legalRoutes) {
+  const absolutePath = resolve(process.cwd(), path);
+  assert.ok(existsSync(absolutePath), `${label} route must exist at ${path}`);
+}
