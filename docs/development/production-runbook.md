@@ -112,6 +112,56 @@ secrets or workflow environment variables.
 - If an Arc webhook signature fails, retain only safe correlation metadata in
   logs and investigate configuration; never disable signature validation.
 
+## One-time approved design-catalog import
+
+The versioned `scripts/catalog-import/import-design-catalog.mjs` imports the
+approved 93-item design catalog through the Admin API. It does not modify
+existing unrelated catalog records, write PostgreSQL directly or expose the
+Admin API key. Run it only after the matching repository commit is deployed.
+
+Before the first `--apply`, create a database backup with permissions visible
+only to root:
+
+```sh
+install -d -m 700 /opt/turkiye/backups
+docker compose --env-file /etc/turkiye/turkiye.env -f /opt/turkiye/compose.prod.yml \
+  exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' \
+  > /opt/turkiye/backups/pre-design-catalog-$(date -u +%Y%m%dT%H%M%SZ).sql
+chmod 600 /opt/turkiye/backups/pre-design-catalog-*.sql
+```
+
+Run the dry-run first. It validates all local assets, detects any conflicting
+slug before mutation, and prints only aggregate counts:
+
+```sh
+docker run --rm --network turkiye_default \
+  --env-file /etc/turkiye/turkiye.env \
+  -e CATALOG_IMPORT_API_BASE_URL=http://api:3001 \
+  -e CATALOG_IMPORT_ACTOR_ID=catalog-import-2026-08-10 \
+  -v /opt/turkiye:/workspace:ro \
+  turkiye-api node /workspace/scripts/catalog-import/import-design-catalog.mjs
+```
+
+Expected first-run output is 13 missing categories, 93 missing products, zero
+conflicts and zero failed uploads. The importer converts only its explicit
+oversized JPEG and AVIF exceptions to WebP in memory; all other photos must
+already be JPEG, PNG or WebP within 5 MiB. Only then repeat the same command
+with the explicit final argument:
+
+```sh
+docker run --rm --network turkiye_default \
+  --env-file /etc/turkiye/turkiye.env \
+  -e CATALOG_IMPORT_API_BASE_URL=http://api:3001 \
+  -e CATALOG_IMPORT_ACTOR_ID=catalog-import-2026-08-10 \
+  -v /opt/turkiye:/workspace:ro \
+  turkiye-api node /workspace/scripts/catalog-import/import-design-catalog.mjs --apply
+```
+
+The command runs serially and can resume after an interruption only when the
+already-created category or product still exactly matches the import plan.
+Stop on a conflict or failed upload; do not repair it through direct database
+or MinIO writes.
+
 ## Rollback
 
 Stop application services first, keep the PostgreSQL volume intact, and deploy

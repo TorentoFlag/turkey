@@ -16,7 +16,7 @@
 - Map `connectivity`, `tickets`, `digital`, `guides` to `auto_delivery`; `shopping` to `physical`; all other design types to `booking`.
 - Store each displayed design price as positive `priceMinor` in `RUB`, including booking items; booking must still never create checkout.
 - Upload exactly one local image per product using multipart `photo`; no external source URLs enter the catalog.
-- Enforce the 5 MiB input limit before writing. Compress only `bursa-koza-han-market.jpg` in memory to WebP; do not alter the licensed design asset.
+- Enforce the 5 MiB input limit and allowed source formats before writing. Convert only `bursa-koza-han-market.jpg` (oversize) and `cappadocia-cave-hotel.avif` (unsupported AVIF) in memory to WebP; do not alter the licensed design assets.
 - Use Admin API only; no direct writes to PostgreSQL or MinIO.
 - The import is dry-run by default and mutates production only with `--apply`.
 - Never print API credentials, database URLs, cookies, or complete product payloads in logs.
@@ -158,7 +158,7 @@ export async function runImport({ plan, client, imageRoot, apply, logger }) {
 
 Use `x-admin-api-key` and `x-admin-actor-id` headers only in process memory. Send category JSON and product multipart bodies (`product` JSON + `photo`). Compare existing objects by slug, hierarchy/name, title, description, type, price/currency and a managed `/media/products/` image URL; skip only matching imported records. Stop on the first HTTP error; a subsequent run resumes from matching records.
 
-`validateAllAssets` must check all files before any mutation. Reject unsupported MIME types and assets above 5 MiB except `catalog-generated/bursa-koza-han-market.jpg`. For that exact path, use Sharp in memory (`rotate`, max 2560px, WebP quality 82) and require the transformed buffer to be at most 5 MiB.
+`validateAllAssets` must check all files before any mutation. Reject unsupported MIME types and assets above 5 MiB except the explicit in-memory conversion allowlist: `catalog-generated/bursa-koza-han-market.jpg` and `home-sources/cappadocia-cave-hotel.avif`. For only those exact paths, use Sharp in memory (`rotate`, max 2560px, WebP quality 82) and require the transformed buffer to be at most 5 MiB.
 
 - [ ] **Step 4: Run runner tests and lint-like syntax checks**
 
@@ -185,11 +185,17 @@ git commit -m "feat(turkiye): add resumable design catalog importer"
 - Consumes: Task 1 mapper and Task 2 runner.
 - Produces: a documented, exact production invocation that mounts `/opt/turkiye` read-only into the running `turkiye-api` image and uses the internal `api:3001` endpoint.
 
-- [ ] **Step 1: Add a failing command-level test for the special oversized image**
+- [ ] **Step 1: Add failing command-level tests for the exceptional source assets**
 
 ```js
-test("converts only the oversized Bursa image before multipart upload", async () => {
+test("converts the oversized Bursa image before multipart upload", async () => {
   const photo = await readPhoto(bursaProduct, localImageRoot);
+  assert.equal(photo.contentType, "image/webp");
+  assert.ok(photo.bytes.length <= 5_242_880);
+});
+
+test("converts the sole AVIF design image before multipart upload", async () => {
+  const photo = await readPhoto(istanbulFastDayPass, localImageRoot);
   assert.equal(photo.contentType, "image/webp");
   assert.ok(photo.bytes.length <= 5_242_880);
 });
@@ -197,9 +203,9 @@ test("converts only the oversized Bursa image before multipart upload", async ()
 
 - [ ] **Step 2: Run it and verify it fails before the image transform exists**
 
-Run: `node --test scripts/catalog-import/import-design-catalog.test.mjs --test-name-pattern='oversized Bursa'`
+Run: `node --test scripts/catalog-import/import-design-catalog.test.mjs --test-name-pattern='Bursa|AVIF'`
 
-Expected: FAIL because `readPhoto` has not yet converted an oversized input.
+Expected: FAIL because `readPhoto` has not yet converted the exceptional inputs.
 
 - [ ] **Step 3: Document exact production execution and implement the test support**
 
@@ -285,4 +291,3 @@ Read the Admin API with a non-secret actor header and assert every expected slug
 - [ ] **Step 5: Browser runtime check and final state**
 
 Open `https://turkeyplanners.com`, navigate to the catalog, and verify one representative product of each type: `trasst-esim-1gb`, `turkishopping-black-mink-coat`, and `istanbul-shuttle-aksaray`. Confirm title, RUB price, image response and the type-appropriate checkout/request UI. Re-run `docker compose ps`, public health checks and `git status --short`; preserve the database backup and do not prune rollback images during this task.
-
