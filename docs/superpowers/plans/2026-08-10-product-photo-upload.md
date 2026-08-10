@@ -422,3 +422,15 @@ Skip this commit if no documentation changed.
 - No product migration is planned because products.image_url remains authoritative.
 - Every consumer interface is declared before use. JSON compatibility is explicitly tested.
 - No plan command mutates production or contains a real secret.
+
+## Execution Status (2026-08-10)
+
+- Tasks 1–6 are implemented and committed in the Turkiye and VV Admin `main`
+  worktrees. The implemented path is browser → VV Admin API → Turkiye Admin API
+  → private MinIO, with a single normalized WebP product photo.
+- Automated evidence includes Turkiye unit/integration tests, API and web
+  typechecks/builds, connector FormData tests, and a controlled local MinIO
+  policy proof using the non-root app user.
+- Task 7 browser proof is intentionally still open: no complete local VV Admin
+  + Turkiye authenticated fixture stack was configured in this run. No
+  production deploy, secret update, or real catalog mutation was performed.
