@@ -41,7 +41,6 @@ test("maps all approved design records to the production taxonomy", () => {
     [
       "shopping-fur",
       "shopping-jewelry",
-      "vip-transport-helicopters",
     ],
   );
 
@@ -63,6 +62,11 @@ test("maps all approved design records to the production taxonomy", () => {
     plan.products.find(({ slug }) => slug === "istanbul-shuttle-aksaray")
       ?.type,
     "booking",
+  );
+  assert.equal(
+    plan.products.find(({ slug }) => slug === "elithomes-helicopter-15-min")
+      ?.categorySlug,
+    "vip-transport",
   );
   assert.equal(
     plan.products.find(({ slug }) => slug === "trasst-esim-1gb")?.priceMinor,

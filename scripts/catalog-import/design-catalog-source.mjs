@@ -20,7 +20,6 @@ const roots = [
 const children = [
   ["shopping-fur", "Меха", "shopping"],
   ["shopping-jewelry", "Ювелирные изделия", "shopping"],
-  ["vip-transport-helicopters", "Вертолёты", "vip-transport"],
 ];
 
 const typeByDesignType = new Map([
@@ -37,10 +36,10 @@ const typeByDesignType = new Map([
   ["vip-transport", "booking"],
 ]);
 
-const childSlugByDesignSubcategory = new Map([
+const categorySlugByDesignSubcategory = new Map([
   ["shopping:fur", "shopping-fur"],
   ["shopping:jewelry", "shopping-jewelry"],
-  ["vip-transport:helicopters", "vip-transport-helicopters"],
+  ["vip-transport:helicopters", "vip-transport"],
 ]);
 
 export function readDesignProducts({ sourcePath }) {
@@ -88,7 +87,7 @@ export function buildCatalogPlan(sourceProducts) {
 
     const rootSlug = product.type === "guides" ? "activities" : product.type;
     const categorySlug = product.subcategory
-      ? childSlugByDesignSubcategory.get(`${product.type}:${product.subcategory}`)
+      ? categorySlugByDesignSubcategory.get(`${product.type}:${product.subcategory}`)
       : rootSlug;
     if (!categorySlug) {
       throw new Error(`Unknown design subcategory: ${product.type}:${product.subcategory}`);
