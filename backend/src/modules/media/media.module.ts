@@ -2,15 +2,19 @@ import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { S3Client } from '@aws-sdk/client-s3';
 import type { AppEnv } from '../../config/env.js';
+import { DatabaseModule } from '../../database/database.module.js';
+import { CatalogMediaCleanupService } from './catalog-media-cleanup.service.js';
+import { PRODUCT_MEDIA_STORAGE } from './media.constants.js';
 import { MinioProductMediaStorage } from './minio-product-media.storage.js';
 import {
   ProductMediaService,
   type ProductMediaStorage,
 } from './product-media.service.js';
 
-export const PRODUCT_MEDIA_STORAGE = Symbol('PRODUCT_MEDIA_STORAGE');
+export { PRODUCT_MEDIA_STORAGE } from './media.constants.js';
 
 @Module({
+  imports: [DatabaseModule],
   providers: [
     {
       provide: PRODUCT_MEDIA_STORAGE,
@@ -39,9 +43,14 @@ export const PRODUCT_MEDIA_STORAGE = Symbol('PRODUCT_MEDIA_STORAGE');
         new ProductMediaService(
           storage,
           config.get('MEDIA_PUBLIC_BASE_URL', { infer: true }),
-        ),
+      ),
     },
+    CatalogMediaCleanupService,
   ],
-  exports: [ProductMediaService, PRODUCT_MEDIA_STORAGE],
+  exports: [
+    ProductMediaService,
+    PRODUCT_MEDIA_STORAGE,
+    CatalogMediaCleanupService,
+  ],
 })
 export class MediaModule {}
