@@ -18,13 +18,13 @@ Current production routing is:
 - API: `https://turkeyplanners.com/api`;
 - Arc webhook: `https://turkeyplanners.com/api/v1/webhooks/arc`.
 
-Product photos are served only through the public HTTPS `/media/` path. Keep
-MinIO and its Console private to the Compose network; the host reverse proxy
-owns this one narrow bucket read route:
+Product photos are served only through the public HTTPS `/media/` path. MinIO
+is bound exclusively to `127.0.0.1:9000`; the host reverse proxy owns this one
+narrow bucket read route and neither MinIO nor its Console is publicly exposed:
 
 ```nginx
 location ^~ /media/ {
-  proxy_pass http://minio:9000/turkiye-catalog-media/;
+  proxy_pass http://127.0.0.1:9000/turkiye-catalog-media/;
   proxy_set_header Host $host;
   proxy_hide_header x-amz-request-id;
 }
