@@ -58,6 +58,7 @@ configureBrokenLocalDesktopStoreFallback();
 export default defineConfig({
   test: {
     environment: 'node',
+    setupFiles: ['test/setup-env.ts'],
     hookTimeout: 120_000,
     include: ['test/**/*.integration.spec.ts'],
     testTimeout: 30_000,

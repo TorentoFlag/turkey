@@ -4,6 +4,11 @@ x-backend-environment: &backend-environment
   DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL for the Docker network, for example postgresql://turkiye:password@postgres:5432/turkiye}
   LOG_LEVEL: ${LOG_LEVEL:-info}
   ADMIN_API_KEY: ${ADMIN_API_KEY:?Set ADMIN_API_KEY}
+  MINIO_ENDPOINT: http://minio:9000
+  MINIO_BUCKET: ${MINIO_BUCKET:-turkiye-catalog-media}
+  MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?Set MINIO_ACCESS_KEY}
+  MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?Set MINIO_SECRET_KEY}
+  MEDIA_PUBLIC_BASE_URL: ${MEDIA_PUBLIC_BASE_URL:?Set MEDIA_PUBLIC_BASE_URL}
   ARC_API_BASE_URL: ${ARC_API_BASE_URL:-https://api.arcpay.space/v1}
   ARC_SECRET_API_KEY: ${ARC_SECRET_API_KEY:?Set ARC_SECRET_API_KEY}
   ARC_WEBHOOK_SECRET: ${ARC_WEBHOOK_SECRET:?Set ARC_WEBHOOK_SECRET}
@@ -16,6 +21,44 @@ x-backend-environment: &backend-environment
   WORKER_POLL_INTERVAL_MS: ${WORKER_POLL_INTERVAL_MS:-5000}
 
 services:
+  minio:
+    image: quay.io/minio/minio:latest
+    command: ["server", "/data", "--console-address", ":9001"]
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD}
+    volumes:
+      - turkiye-minio-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  minio-init:
+    image: quay.io/minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    restart: "no"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?Set MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Set MINIO_ROOT_PASSWORD}
+      MINIO_BUCKET: ${MINIO_BUCKET:-turkiye-catalog-media}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?Set MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?Set MINIO_SECRET_KEY}
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        mc alias set local http://minio:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD"
+        mc mb --ignore-existing "local/$MINIO_BUCKET"
+        mc anonymous set download "local/$MINIO_BUCKET"
+        mc admin user add local "$MINIO_ACCESS_KEY" "$MINIO_SECRET_KEY" || true
+        printf '%s' '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["s3:ListBucket"],"Resource":["arn:aws:s3:::'"$MINIO_BUCKET"'"]},{"Effect":"Allow","Action":["s3:PutObject","s3:GetObject","s3:DeleteObject"],"Resource":["arn:aws:s3:::'"$MINIO_BUCKET"'/products/*"]}]}' > /tmp/catalog-media-policy.json
+        mc admin policy create local catalog-media-app /tmp/catalog-media-policy.json || true
+        mc admin policy attach local catalog-media-app --user "$MINIO_ACCESS_KEY"
+
   postgres:
     image: postgres:17-alpine
     restart: unless-stopped
@@ -39,6 +82,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
     restart: "no"
 
   api:
@@ -92,3 +137,4 @@ services:
 
 volumes:
   turkiye-postgres-data:
+  turkiye-minio-data:

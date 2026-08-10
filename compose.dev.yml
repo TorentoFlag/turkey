@@ -1,4 +1,39 @@
 services:
+  minio:
+    image: quay.io/minio/minio:latest
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: turkiye-minio-root
+      MINIO_ROOT_PASSWORD: turkiye-minio-root-password
+    ports:
+      - "127.0.0.1:9000:9000"
+    volumes:
+      - turkiye-minio-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  minio-init:
+    image: quay.io/minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: turkiye-minio-root
+      MINIO_ROOT_PASSWORD: turkiye-minio-root-password
+      MINIO_BUCKET: turkiye-catalog-media
+      MINIO_ACCESS_KEY: catalog-media-test-key
+      MINIO_SECRET_KEY: catalog-media-test-secret
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        mc alias set local http://minio:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD"
+        mc mb --ignore-existing "local/$MINIO_BUCKET"
+        mc anonymous set download "local/$MINIO_BUCKET"
+        mc admin user add local "$MINIO_ACCESS_KEY" "$MINIO_SECRET_KEY" || true
+
   postgres:
     image: postgres:17-alpine
     environment:
@@ -17,3 +52,4 @@ services:
 
 volumes:
   turkiye-postgres-data:
+  turkiye-minio-data:
