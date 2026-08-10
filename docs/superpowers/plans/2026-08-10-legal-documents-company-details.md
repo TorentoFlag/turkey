@@ -77,6 +77,8 @@
 
 **Files:** modify this plan only to mark completed checkboxes after actual evidence.
 
+**Verification record (2026-08-10):** `npm run test:legal`, `npm run lint`, `npm run typecheck` and `npm run build` exited 0. The production build listed `/legal/terms`, `/legal/privacy` and `/privacy`; a local production server returned HTTP 200 for each route. Browser inspection could not run because the session had no available browser. `node --test scripts/marketplaceRoutes.test.mjs` remains outside this change: its pre-existing static-export harness expects `out/`, while `next.config.ts` no longer enables static export, so it fails before checking any route.
+
 - [ ] **Step 1: Run automated gates from `frontend/`.** `npm run test:legal`, `node --test scripts/marketplaceRoutes.test.mjs`, `npm run lint`, `npm run typecheck`, and `npm run build` must all exit 0.
 - [ ] **Step 2: Inspect `/legal/terms`, `/legal/privacy` and `/privacy` in a browser at desktop and 390px width.** Confirm semantic headings, links, `mailto:`, long address wrapping, visible focus and no horizontal overflow.
 - [ ] **Step 3: Inspect and commit final evidence.** Run `git diff --check && git status --short`, update checkboxes with results, then `git add docs/superpowers/plans/2026-08-10-legal-documents-company-details.md && git diff --cached --check && git commit -m "docs: record legal documents verification"`.
