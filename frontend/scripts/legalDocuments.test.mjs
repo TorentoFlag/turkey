@@ -58,3 +58,18 @@ for (const [path, label] of legalRoutes) {
   const absolutePath = resolve(process.cwd(), path);
   assert.ok(existsSync(absolutePath), `${label} route must exist at ${path}`);
 }
+
+const marketplaceFooter = readFileSync(resolve(process.cwd(), "src/components/marketplace/MarketplaceFooter.tsx"), "utf8");
+const homePage = readFileSync(resolve(process.cwd(), "src/app/page.tsx"), "utf8");
+
+for (const [source, label] of [
+  [marketplaceFooter, "marketplace footer"],
+  [homePage, "home footer"],
+]) {
+  assert.match(source, /legal\/terms/, `${label} must link to the User Agreement`);
+  assert.match(source, /legal\/privacy/, `${label} must link to the Privacy Policy`);
+  assert.match(source, /siteConfig\.legalCompanyName/, `${label} must render the company name from shared config`);
+  assert.match(source, /siteConfig\.registrationNumber/, `${label} must render the registration number from shared config`);
+  assert.match(source, /siteConfig\.legalAddress/, `${label} must render the legal address from shared config`);
+  assert.match(source, /mailto:/, `${label} must expose the support email link`);
+}

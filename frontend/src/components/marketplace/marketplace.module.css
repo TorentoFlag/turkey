@@ -107,6 +107,12 @@
 .footerMark { font-family: "Literata", Georgia, serif; font-size: 1.15rem; }
 .footerNote { max-width: 18rem; color: #60645b; font-size: 0.875rem; line-height: 1.45; }
 .footerNav { min-width: 0; align-content: start; }
+.footerSections { display: grid; grid-template-columns: minmax(10rem, 0.7fr) minmax(13rem, 1fr) minmax(16rem, 1.4fr); gap: 1.25rem clamp(1.25rem, 3vw, 3rem); min-width: 0; }
+.footerCompany { display: grid; align-content: start; gap: 0.55rem; min-width: 0; color: #60645b; font-size: 0.75rem; line-height: 1.45; }
+.footerCompany p { margin: 0; overflow-wrap: anywhere; }
+.footerCompany p:first-child { color: #454940; font-weight: 700; }
+.footerCompany a { overflow-wrap: anywhere; color: #7a4b2f; font-weight: 700; }
+.footerCompany a:hover { color: #a54e33; }
 
 .breadcrumbs { margin-bottom: 1.5rem; color: #60645b; font-size: 0.8125rem; }
 .breadcrumbs ol { display: flex; flex-wrap: wrap; gap: 0.45rem; padding: 0; margin: 0; list-style: none; }
@@ -160,7 +166,7 @@
   .pageIntro h1 { max-width: 10ch; }
   .catalogPageIntro p { white-space: normal; }
   .catalogPageIntro h1 { max-width: 10ch; white-space: normal; text-wrap: balance; }
-  .footerInner { grid-template-columns: 1fr; }
+  .footerInner, .footerSections { grid-template-columns: 1fr; }
   .serviceCardMedia, .serviceCard:nth-child(even) .serviceCardMedia { min-height: 0; aspect-ratio: 4 / 3; }
   .serviceCardContent { min-height: 0; }
   .filterPanel { grid-template-columns: 1fr; }

@@ -2465,6 +2465,32 @@ html[data-motion="reduced"] .direction-copy [data-direction-part] {
   font-size: 0.75rem;
 }
 
+.footer-company {
+  grid-column: span 2;
+}
+
+.footer-company p {
+  max-width: 28rem;
+  margin: 0;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 0.75rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.footer-company a {
+  width: fit-content;
+  min-height: 2.1rem;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 0.75rem;
+  overflow-wrap: anywhere;
+}
+
+.footer-company a:hover,
+.footer-company a:focus-visible {
+  color: #dc8a69;
+}
+
 .footer-bottom {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -3115,6 +3141,10 @@ html[data-motion="reduced"] .direction-copy [data-direction-part] {
   }
 
   .footer-category-group {
+    grid-column: 1 / -1;
+  }
+
+  .footer-company {
     grid-column: 1 / -1;
   }
 

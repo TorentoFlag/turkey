@@ -304,6 +304,18 @@ export default function HomePage() {
             <a href="#statement">О подходе</a>
             <a href="#principles">Как это работает</a>
           </nav>
+          <nav aria-label="Документы" data-reveal>
+            <span>Документы</span>
+            <Link href="/legal/terms">Пользовательское соглашение</Link>
+            <Link href="/legal/privacy">Политика конфиденциальности</Link>
+          </nav>
+          <div className="footer-meta footer-company" data-reveal>
+            <span>Реквизиты компании</span>
+            <strong>{siteConfig.legalCompanyName}</strong>
+            <p>Регистрационный номер: {siteConfig.registrationNumber}</p>
+            <p>{siteConfig.legalAddress}</p>
+            <a href={`mailto:${siteConfig.supportEmail}`}>{siteConfig.supportEmail}</a>
+          </div>
           <div className="footer-meta" data-reveal>
             <span>Язык и валюта</span>
             <strong>Русский · RUB</strong>
