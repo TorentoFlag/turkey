@@ -18,6 +18,18 @@ Current production routing is:
 - API: `https://turkeyplanners.com/api`;
 - Arc webhook: `https://turkeyplanners.com/api/v1/webhooks/arc`.
 
+Product photos are served only through the public HTTPS `/media/` path. Keep
+MinIO and its Console private to the Compose network; the host reverse proxy
+owns this one narrow bucket read route:
+
+```nginx
+location ^~ /media/ {
+  proxy_pass http://minio:9000/turkiye-catalog-media/;
+  proxy_set_header Host $host;
+  proxy_hide_header x-amz-request-id;
+}
+```
+
 ## Operator-only environment
 
 Keep the environment file outside the repository with restrictive filesystem
@@ -29,6 +41,10 @@ environment file.
 | `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` | PostgreSQL bootstrap | unique production values |
 | `DATABASE_URL` | API, worker, migrate | `postgresql://...@postgres:5432/...`; host must be `postgres` inside Compose |
 | `ADMIN_API_KEY` | trusted external admin | long random server-to-server secret; admin sends it only in `X-Admin-Api-Key` |
+| `MINIO_ROOT_USER`, `MINIO_ROOT_PASSWORD` | MinIO bootstrap/init only | unique root credentials; never passed to API or worker |
+| `MINIO_BUCKET` | MinIO/API/worker | optional; defaults to `turkiye-catalog-media` |
+| `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY` | API and worker | dedicated non-root user limited to the bucket's `products/` objects |
+| `MEDIA_PUBLIC_BASE_URL` | API and worker | public HTTPS media origin, for example `https://turkeyplanners.com/media` |
 | `ARC_SECRET_API_KEY`, `ARC_WEBHOOK_SECRET` | Arc Pay | production keys only after Arc account and webhook URL are configured |
 | `RESEND_API_KEY`, `RESEND_FROM` | email | least-privilege key and verified sender domain |
 | `SLACK_WEBHOOK_URL` | operations | private incoming webhook; never frontend-visible |
@@ -53,6 +69,8 @@ keys, Slack URLs, database URLs or credentials.
    `X-Admin-Actor-Id`; do not introduce browser JWT/Bearer access to Admin API.
 5. Back up the database before applying a new migration. Inspect the migration
    SQL and planned downtime/lock risk.
+6. Confirm the `/media/` reverse-proxy block targets only
+   `turkiye-catalog-media/`; do not publish a MinIO port or Console route.
 
 ## Launch and observe
 
