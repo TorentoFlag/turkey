@@ -313,7 +313,6 @@ export default function HomePage() {
             <span>Реквизиты компании</span>
             <strong>{siteConfig.legalCompanyName}</strong>
             <p>Регистрационный номер: {siteConfig.registrationNumber}</p>
-            <p>{siteConfig.legalAddress}</p>
             <a href={`mailto:${siteConfig.supportEmail}`}>{siteConfig.supportEmail}</a>
           </div>
           <div className="footer-meta" data-reveal>

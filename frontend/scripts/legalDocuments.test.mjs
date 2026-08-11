@@ -81,6 +81,6 @@ for (const [source, label] of [
   assert.match(source, /legal\/privacy/, `${label} must link to the Privacy Policy`);
   assert.match(source, /siteConfig\.legalCompanyName/, `${label} must render the company name from shared config`);
   assert.match(source, /siteConfig\.registrationNumber/, `${label} must render the registration number from shared config`);
-  assert.match(source, /siteConfig\.legalAddress/, `${label} must render the legal address from shared config`);
+  assert.doesNotMatch(source, /siteConfig\.legalAddress/, `${label} must not render the legal address`);
   assert.match(source, /mailto:/, `${label} must expose the support email link`);
 }

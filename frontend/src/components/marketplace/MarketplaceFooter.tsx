@@ -51,7 +51,6 @@ export function MarketplaceFooter() {
           <section aria-label="Реквизиты компании" className={styles.footerCompany}>
             <p>{siteConfig.legalCompanyName}</p>
             <p>Регистрационный номер: {siteConfig.registrationNumber}</p>
-            <p>{siteConfig.legalAddress}</p>
             <a href={`mailto:${siteConfig.supportEmail}`}>{siteConfig.supportEmail}</a>
           </section>
         </div>
