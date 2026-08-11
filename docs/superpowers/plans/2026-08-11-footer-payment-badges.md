@@ -4,7 +4,7 @@
 
 **Goal:** Show official SBP and Mir payment badges in the Turkey Planners marketplace footer.
 
-**Architecture:** Keep the badges as local static SVG files in `frontend/public/payment/`; render them from the existing `MarketplaceFooter` component with descriptive alternative text. CSS extends only the footer layout and stacks cleanly on the existing mobile breakpoint.
+**Architecture:** Keep the badges as local static SVG files in `frontend/public/payment/`; render them in both the home footer and the existing `MarketplaceFooter` with descriptive alternative text. CSS extends only the footer layout and stacks cleanly on the existing mobile breakpoint.
 
 **Tech Stack:** Next.js, React, CSS modules, Node assertion test.
 
@@ -25,12 +25,14 @@
 - Create: `frontend/public/payment/mir-logo.svg`
 - Modify: `frontend/src/components/marketplace/MarketplaceFooter.tsx`
 - Modify: `frontend/src/components/marketplace/marketplace.module.css`
+- Modify: `frontend/src/app/page.tsx`
+- Modify: `frontend/src/app/globals.css`
 - Test: `frontend/scripts/legalDocuments.test.mjs`
 
 **Interfaces:**
 
-- Consumes: `MarketplaceFooter` and its CSS-module class names.
-- Produces: a labelled payment-method section with two local SVG images at `/payment/sbp-logo.svg` and `/payment/mir-logo.svg`.
+- Consumes: the home footer, `MarketplaceFooter`, and their existing styling.
+- Produces: labelled payment-method sections with two local SVG images at `/payment/sbp-logo.svg` and `/payment/mir-logo.svg`.
 
 - [ ] **Step 1: Add failing footer-contract assertions**
 

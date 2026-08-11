@@ -321,6 +321,25 @@ export default function HomePage() {
             <strong>Русский · RUB</strong>
             <small>Поддержка ежедневно · 09:00–21:00</small>
           </div>
+          <div className="footer-meta footer-payments" data-reveal>
+            <span>Оплата онлайн</span>
+            <div className="footer-payment-badges">
+              <Image
+                alt="Система быстрых платежей"
+                className="footer-sbp-badge"
+                height={120}
+                src={sitePath("/payment/sbp-logo.svg")}
+                width={98}
+              />
+              <Image
+                alt="Платёжная система Мир"
+                className="footer-mir-badge"
+                height={120}
+                src={sitePath("/payment/mir-logo.svg")}
+                width={400}
+              />
+            </div>
+          </div>
         </div>
         <div className="footer-bottom">
           <span>© 2026</span>

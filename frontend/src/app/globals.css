@@ -2465,6 +2465,27 @@ html[data-motion="reduced"] .direction-copy [data-direction-part] {
   font-size: 0.75rem;
 }
 
+.footer-payment-badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.9rem;
+}
+
+.footer-payment-badges img {
+  display: block;
+  width: auto;
+  object-fit: contain;
+}
+
+.footer-sbp-badge {
+  height: 1.7rem;
+}
+
+.footer-mir-badge {
+  height: 1.45rem;
+}
+
 .footer-company {
   grid-column: span 2;
 }
