@@ -3,7 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNotNull, ne } from 'drizzle-orm';
 import argon2 from 'argon2';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
@@ -176,8 +176,24 @@ export class OrdersService {
     }).onConflictDoNothing().returning();
     const user = createdUser[0] ?? (await this.database.db.select().from(users).where(eq(users.email, scenarioEmail)).limit(1))[0];
     if (!user) throw new Error('Scenario user initialization failed.');
-    const product = (await this.database.db.select().from(products).where(eq(products.isActive, true)).limit(1))[0];
-    if (!product || product.priceMinor === null || product.currency === null || product.type === 'booking') throw new BadRequestException('No payable active product for scenario.');
+    const product = (
+      await this.database.db
+        .select()
+        .from(products)
+        .where(
+          and(
+            eq(products.isActive, true),
+            ne(products.type, 'booking'),
+            isNotNull(products.priceMinor),
+            isNotNull(products.currency),
+            inArray(products.currency, ['RUB', 'KZT', 'UZS']),
+          ),
+        )
+        .limit(1)
+    )[0];
+    if (!product || product.priceMinor === null || product.currency === null) {
+      throw new BadRequestException('No payable active product for scenario.');
+    }
     const inserted = await this.database.db.insert(orders).values({ userId: user.id, productId: product.id, idempotencyKey: randomUUID(), productTitle: product.title, productType: product.type, priceMinor: product.priceMinor, currency: product.currency, email: scenarioEmail, phone: '+70000000000', deliveryAddress: product.type === 'physical' ? 'Scenario address' : null, isScenario: true }).returning({ id: orders.id });
     return { id: user.id, email: user.email, orderId: inserted[0]!.id };
   }

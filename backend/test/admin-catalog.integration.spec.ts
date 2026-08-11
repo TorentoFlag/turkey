@@ -1527,6 +1527,79 @@ describe('admin catalog API', () => {
     );
   });
 
+  it('selects a payable product for the scenario checkout when bookings exist first', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        Response.json([
+          {
+            method: 'sbp',
+            payment_mode: 'h2h',
+            is_active: true,
+            supported_currencies: ['RUB', 'TRY'],
+          },
+        ]),
+      )
+      .mockResolvedValueOnce(
+        Response.json(
+          {
+            id: '018f71c1-4afe-7b1d-9f55-123456789abe',
+            url: 'https://checkout.arc.example.test/session/scenario',
+          },
+          { status: 201 },
+        ),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+
+    app = await createApp(appModule);
+    const category = await createCategory(app, {
+      name: 'Тестовая подборка оплаты',
+      slug: 'scenario-checkout-selection',
+    });
+    await createProduct(app, {
+      categoryId: category.id,
+      title: 'Бронирование для сценария',
+      slug: 'scenario-booking-first',
+      description: 'Заявка, для которой checkout создавать нельзя.',
+      type: 'booking',
+    });
+    await createProduct(app, {
+      categoryId: category.id,
+      title: 'Оплачиваемая eSIM для сценария',
+      slug: 'scenario-payable-esim',
+      description: 'Оплачиваемый товар для технического сценария.',
+      type: 'auto_delivery',
+      priceMinor: 1_990,
+      currency: 'RUB',
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v1/admin/scenario-orders',
+      headers: adminHeaders(),
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(response.json()).toEqual({
+      scenarioOrderId: expect.any(String),
+      checkoutUrl: 'https://checkout.arc.example.test/session/scenario',
+    });
+    const scenarioOrderId = response.json<{ scenarioOrderId: string }>()
+      .scenarioOrderId;
+    const selected = await pool.query<{
+      product_type: string;
+      currency: string;
+    }>('select product_type, currency from orders where id = $1', [
+      scenarioOrderId,
+    ]);
+    expect(selected.rows).toEqual([
+      {
+        product_type: expect.stringMatching(/^(auto_delivery|physical)$/),
+        currency: 'RUB',
+      },
+    ]);
+  });
+
   it('creates one hosted checkout using only the active SBP method', async () => {
     const fetchMock = vi
       .fn()
