@@ -21,19 +21,19 @@ describe('product media deployment topology', () => {
     const minioSection = production
       .split('\n  minio-init:')[0]
       ?.split('\n  minio:')[1];
-    expect(minioSection).toContain(
-      '127.0.0.1:${MINIO_BIND_PORT:-9000}:9000',
-    );
+    expect(minioSection).toContain('127.0.0.1:${MINIO_BIND_PORT:-9000}:9000');
     expect(production).toContain('turkiye-minio-data:/data');
     expect(production).toContain('service_completed_successfully');
     expect(production).toContain(
-      'mc admin policy attach local catalog-media-app',
+      'mc admin policy attach local catalog-media-app-v2',
     );
+    expect(production).toContain('"$$MINIO_BUCKET"\'/destinations/*');
     expect(development).toContain('\n  minio:');
     expect(development).toContain('127.0.0.1:${MINIO_BIND_PORT:-9000}:9000');
     expect(development).toContain(
-      'mc admin policy attach local catalog-media-app',
+      'mc admin policy attach local catalog-media-app-v2',
     );
+    expect(development).toContain('"$$MINIO_BUCKET"\'/destinations/*');
     expect(environment).toContain('MINIO_ENDPOINT=');
     expect(environment).toContain('MEDIA_PUBLIC_BASE_URL=');
     expect(runbook).toContain('location ^~ /media/');

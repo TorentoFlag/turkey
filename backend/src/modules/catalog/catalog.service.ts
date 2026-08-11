@@ -620,38 +620,47 @@ export class CatalogService {
   }
 
   async listPublicDestinations(): Promise<PublicDestination[]> {
-    const records = await this.database.db
-      .select({ destination: destinations, productId: products.id })
-      .from(destinations)
-      .innerJoin(
-        productDestinations,
-        eq(productDestinations.destinationId, destinations.id),
-      )
-      .innerJoin(products, eq(products.id, productDestinations.productId))
-      .innerJoin(categories, eq(categories.id, products.categoryId))
-      .where(
-        and(
-          eq(destinations.isActive, true),
-          eq(products.isActive, true),
-          eq(categories.isActive, true),
-        ),
-      )
-      .orderBy(asc(destinations.sortOrder), asc(destinations.name));
+    const [activeDestinations, records] = await Promise.all([
+      this.database.db
+        .select()
+        .from(destinations)
+        .where(eq(destinations.isActive, true))
+        .orderBy(asc(destinations.sortOrder), asc(destinations.name)),
+      this.database.db
+        .select({ destination: destinations, productId: products.id })
+        .from(destinations)
+        .innerJoin(
+          productDestinations,
+          eq(productDestinations.destinationId, destinations.id),
+        )
+        .innerJoin(products, eq(products.id, productDestinations.productId))
+        .innerJoin(categories, eq(categories.id, products.categoryId))
+        .where(
+          and(
+            eq(destinations.isActive, true),
+            eq(products.isActive, true),
+            eq(categories.isActive, true),
+          ),
+        )
+        .orderBy(asc(destinations.sortOrder), asc(destinations.name)),
+    ]);
 
-    const result = new Map<string, PublicDestination>();
+    const productCountByDestinationId = new Map<string, number>();
     for (const { destination } of records) {
-      const current = result.get(destination.id);
-      result.set(destination.id, {
-        id: destination.id,
-        name: destination.name,
-        slug: destination.slug,
-        region: destination.region,
-        description: destination.description,
-        imageUrl: destination.imageUrl,
-        productCount: (current?.productCount ?? 0) + 1,
-      });
+      productCountByDestinationId.set(
+        destination.id,
+        (productCountByDestinationId.get(destination.id) ?? 0) + 1,
+      );
     }
-    return [...result.values()];
+    return activeDestinations.map((destination) => ({
+      id: destination.id,
+      name: destination.name,
+      slug: destination.slug,
+      region: destination.region,
+      description: destination.description,
+      imageUrl: destination.imageUrl,
+      productCount: productCountByDestinationId.get(destination.id) ?? 0,
+    }));
   }
 
   async getPublicDestination(slug: string): Promise<PublicDestinationDetail> {
@@ -675,9 +684,6 @@ export class CatalogService {
         asc(products.sortOrder),
         asc(products.title),
       );
-    if (records.length === 0) {
-      throw new NotFoundException('Destination was not found.');
-    }
     return {
       destination: {
         id: destination.id,

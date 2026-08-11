@@ -36,23 +36,23 @@ Keep the environment file outside the repository with restrictive filesystem
 permissions. Never paste its contents into a ticket, log, commit or frontend
 environment file.
 
-| Variable | Role | Requirement |
-| --- | --- | --- |
-| `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` | PostgreSQL bootstrap | unique production values |
-| `DATABASE_URL` | API, worker, migrate | `postgresql://...@postgres:5432/...`; host must be `postgres` inside Compose |
-| `ADMIN_API_KEY` | trusted external admin | long random server-to-server secret; admin sends it only in `X-Admin-Api-Key` |
-| `MINIO_ROOT_USER`, `MINIO_ROOT_PASSWORD` | MinIO bootstrap/init only | unique root credentials; never passed to API or worker |
-| `MINIO_BUCKET` | MinIO/API/worker | optional; defaults to `turkiye-catalog-media` |
-| `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY` | API and worker | dedicated non-root user limited to the bucket's `products/` objects |
-| `MEDIA_PUBLIC_BASE_URL` | API and worker | public HTTPS media origin, for example `https://turkeyplanners.com/media` |
-| `ARC_SECRET_API_KEY`, `ARC_WEBHOOK_SECRET` | Arc Pay | production keys only after Arc account and webhook URL are configured |
-| `RESEND_API_KEY`, `RESEND_FROM` | email | least-privilege key and verified sender domain |
-| `SLACK_WEBHOOK_URL` | operations | private incoming webhook; never frontend-visible |
-| `WEB_APP_ORIGIN` | browser CORS/CSRF and Arc return URL | exact public HTTPS storefront origin, no trailing path |
-| `NEXT_PUBLIC_API_BASE_URL` | built storefront | public HTTPS API base URL; contains no secret |
-| `NEXT_PUBLIC_BASE_PATH` | built storefront | empty for a root domain; set only for an intentional subpath |
-| `API_BIND_PORT`, `FRONTEND_BIND_PORT` | host loopback ports | optional; defaults 3001/3000 |
-| `WORKER_POLL_INTERVAL_MS` | worker | optional, 250–300000; defaults 5000 |
+| Variable                                            | Role                                 | Requirement                                                                             |
+| --------------------------------------------------- | ------------------------------------ | --------------------------------------------------------------------------------------- |
+| `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` | PostgreSQL bootstrap                 | unique production values                                                                |
+| `DATABASE_URL`                                      | API, worker, migrate                 | `postgresql://...@postgres:5432/...`; host must be `postgres` inside Compose            |
+| `ADMIN_API_KEY`                                     | trusted external admin               | long random server-to-server secret; admin sends it only in `X-Admin-Api-Key`           |
+| `MINIO_ROOT_USER`, `MINIO_ROOT_PASSWORD`            | MinIO bootstrap/init only            | unique root credentials; never passed to API or worker                                  |
+| `MINIO_BUCKET`                                      | MinIO/API/worker                     | optional; defaults to `turkiye-catalog-media`                                           |
+| `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`              | API and worker                       | dedicated non-root user limited to the bucket's `products/` and `destinations/` objects |
+| `MEDIA_PUBLIC_BASE_URL`                             | API and worker                       | public HTTPS media origin, for example `https://turkeyplanners.com/media`               |
+| `ARC_SECRET_API_KEY`, `ARC_WEBHOOK_SECRET`          | Arc Pay                              | production keys only after Arc account and webhook URL are configured                   |
+| `RESEND_API_KEY`, `RESEND_FROM`                     | email                                | least-privilege key and verified sender domain                                          |
+| `SLACK_WEBHOOK_URL`                                 | operations                           | private incoming webhook; never frontend-visible                                        |
+| `WEB_APP_ORIGIN`                                    | browser CORS/CSRF and Arc return URL | exact public HTTPS storefront origin, no trailing path                                  |
+| `NEXT_PUBLIC_API_BASE_URL`                          | built storefront                     | public HTTPS API base URL; contains no secret                                           |
+| `NEXT_PUBLIC_BASE_PATH`                             | built storefront                     | empty for a root domain; set only for an intentional subpath                            |
+| `API_BIND_PORT`, `FRONTEND_BIND_PORT`               | host loopback ports                  | optional; defaults 3001/3000                                                            |
+| `WORKER_POLL_INTERVAL_MS`                           | worker                               | optional, 250–300000; defaults 5000                                                     |
 
 `NEXT_PUBLIC_*` values are compiled into frontend output. They must not contain
 keys, Slack URLs, database URLs or credentials.
@@ -161,6 +161,36 @@ The command runs serially and can resume after an interruption only when the
 already-created category or product still exactly matches the import plan.
 Stop on a conflict or failed upload; do not repair it through direct database
 or MinIO writes.
+
+## One-time approved design-destinations import
+
+After the matching repository commit is deployed and the design catalog is
+present, import the 15 directions and their 84 source-product memberships only
+through the Admin API. The importer uploads a managed cover for every direction,
+does not delete unrelated memberships, and refuses to overwrite a divergent
+direction or expected membership.
+
+Create a scoped database backup, then run dry-run first:
+
+```sh
+install -d -m 700 /opt/turkiye/backups
+docker compose --env-file /etc/turkiye/turkiye.env -f /opt/turkiye/compose.prod.yml \
+  exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' \
+  > /opt/turkiye/backups/pre-design-destinations-$(date -u +%Y%m%dT%H%M%SZ).sql
+chmod 600 /opt/turkiye/backups/pre-design-destinations-*.sql
+
+docker run --rm --network turkiye_default \
+  --env-file /etc/turkiye/turkiye.env \
+  -e CATALOG_IMPORT_API_BASE_URL=http://api:3001 \
+  -e CATALOG_IMPORT_ACTOR_ID=destination-import-2026-08-11 \
+  -v /opt/turkiye:/workspace:ro \
+  turkiye-api node /workspace/scripts/catalog-import/import-design-destinations.mjs
+```
+
+The expected first dry-run output is 15 missing directions, 84 missing
+memberships, zero conflicts and zero failed uploads. Only then rerun the same
+command with `--apply`. Verify `GET /api/v1/public/destinations` returns all 15
+active directions and inspect the managed `/media/destinations/` cover URLs.
 
 ## One-time Russian product-copy migration
 

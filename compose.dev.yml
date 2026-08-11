@@ -33,9 +33,9 @@ services:
         mc mb --ignore-existing "local/$$MINIO_BUCKET"
         mc anonymous set download "local/$$MINIO_BUCKET"
         mc admin user add local "$$MINIO_ACCESS_KEY" "$$MINIO_SECRET_KEY" || true
-        printf '%s' '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["s3:ListBucket"],"Resource":["arn:aws:s3:::'"$$MINIO_BUCKET"'"]},{"Effect":"Allow","Action":["s3:PutObject","s3:GetObject","s3:DeleteObject"],"Resource":["arn:aws:s3:::'"$$MINIO_BUCKET"'/products/*"]}]}' > /tmp/catalog-media-policy.json
-        mc admin policy create local catalog-media-app /tmp/catalog-media-policy.json || true
-        mc admin policy attach local catalog-media-app --user "$$MINIO_ACCESS_KEY"
+        printf '%s' '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["s3:ListBucket"],"Resource":["arn:aws:s3:::'"$$MINIO_BUCKET"'"]},{"Effect":"Allow","Action":["s3:PutObject","s3:GetObject","s3:DeleteObject"],"Resource":["arn:aws:s3:::'"$$MINIO_BUCKET"'/products/*","arn:aws:s3:::'"$$MINIO_BUCKET"'/destinations/*"]}]}' > /tmp/catalog-media-policy.json
+        mc admin policy create local catalog-media-app-v2 /tmp/catalog-media-policy.json || true
+        mc admin policy attach local catalog-media-app-v2 --user "$$MINIO_ACCESS_KEY"
 
   postgres:
     image: postgres:17-alpine

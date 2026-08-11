@@ -447,6 +447,52 @@ describe('admin catalog API', () => {
     expect(inactiveMembership.statusCode).toBe(400);
   });
 
+  it('publishes an active direction with an empty collection', async () => {
+    app = await createApp(appModule);
+    const direction = await app.inject({
+      method: 'POST',
+      url: '/v1/admin/destinations',
+      headers: adminHeaders(),
+      payload: {
+        name: 'Памуккале',
+        slug: 'pamukkale',
+        region: 'Эгейский регион',
+        description: 'Травертины и древний Иераполис.',
+        imageUrl: 'https://images.example.test/destinations/pamukkale.jpg',
+        sortOrder: 20,
+        isActive: true,
+      },
+    });
+    expect(direction.statusCode).toBe(201);
+
+    const publicIndex = await app.inject({
+      method: 'GET',
+      url: '/v1/public/destinations',
+    });
+    expect(publicIndex.statusCode).toBe(200);
+    expect(publicIndex.json()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          slug: 'pamukkale',
+          productCount: 0,
+        }),
+      ]),
+    );
+
+    const publicDetail = await app.inject({
+      method: 'GET',
+      url: '/v1/public/destinations/pamukkale',
+    });
+    expect(publicDetail.statusCode).toBe(200);
+    expect(publicDetail.json()).toMatchObject({
+      destination: expect.objectContaining({
+        slug: 'pamukkale',
+        productCount: 0,
+      }),
+      products: [],
+    });
+  });
+
   it('does not delete a product while it remains assigned to a direction', async () => {
     app = await createApp(appModule);
     const category = await createCategory(app, {
