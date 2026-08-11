@@ -62,6 +62,12 @@ for (const [path, label] of legalRoutes) {
 const marketplaceFooter = readFileSync(resolve(process.cwd(), "src/components/marketplace/MarketplaceFooter.tsx"), "utf8");
 const homePage = readFileSync(resolve(process.cwd(), "src/app/page.tsx"), "utf8");
 
+assert.match(marketplaceFooter, /Оплата онлайн/);
+assert.match(marketplaceFooter, /payment\/sbp-logo\.svg/);
+assert.match(marketplaceFooter, /payment\/mir-logo\.svg/);
+assert.ok(existsSync(resolve(process.cwd(), "public/payment/sbp-logo.svg")), "the SBP badge asset must exist");
+assert.ok(existsSync(resolve(process.cwd(), "public/payment/mir-logo.svg")), "the Mir badge asset must exist");
+
 for (const [source, label] of [
   [marketplaceFooter, "marketplace footer"],
   [homePage, "home footer"],
