@@ -129,6 +129,22 @@ describe('Store Orders Protocol v1', () => {
     });
     expect(replay.statusCode).toBe(200);
     expect(replay.json()).toEqual(first.json());
+
+    const recoveryPath = `/admin/integration/store-orders/v1/operations/by-request/${request.requestId}`;
+    const recovery = await app.inject({
+      method: 'GET',
+      url: recoveryPath,
+      headers: signedRequest('GET', recoveryPath).headers,
+    });
+    expect(recovery.statusCode).toBe(200);
+    expect(recovery.json()).toEqual({
+      requestId: request.requestId,
+      status: 'completed',
+      response: {
+        status: 200,
+        body: first.json(),
+      },
+    });
     expect(
       await pool.query(
         'select actor_id, action, entity_id from audit_log where entity_id = $1 order by created_at',
@@ -631,6 +647,7 @@ function signedRequest(method: string, path: string, body = '') {
     .update(canonical)
     .digest('hex');
   return {
+    requestId,
     headers: {
       ...(body.length > 0 ? { 'content-type': 'application/json' } : {}),
       'x-vv-site-key': process.env.VV_ADMIN_INTEGRATION_SITE_KEY!,

@@ -512,6 +512,21 @@ export class CatalogProtocolService {
     };
   }
 
+  async getOperationByRequestId(
+    siteKey: string,
+    requestId: string,
+  ): Promise<ProtocolResponse> {
+    const operation = await this.operations.getByRequestId(
+      siteKey,
+      requestId,
+      'catalog',
+    );
+    if (!operation) {
+      throw new NotFoundException('Protocol operation was not found.');
+    }
+    return { body: operation, status: 200 };
+  }
+
   private async mutate<T>(
     context: MutationContext,
     successStatus: number,

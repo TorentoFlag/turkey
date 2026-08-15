@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, like } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { DatabaseService } from '../../database/database.service.js';
 import {
@@ -21,6 +21,19 @@ export type ProtocolOperationResponse = Readonly<{
   body: unknown;
   status: number;
 }>;
+
+export type ProtocolOperationCapability = 'catalog' | 'store-orders';
+
+export type ProtocolOperationRecovery =
+  | Readonly<{
+      requestId: string;
+      status: 'in_progress';
+    }>
+  | Readonly<{
+      requestId: string;
+      response: ProtocolOperationResponse;
+      status: 'completed' | 'failed';
+    }>;
 
 export type ProtocolOperationBeginResult =
   | Readonly<{
@@ -199,6 +212,46 @@ export class ProtocolOperationsService {
     }
 
     return { body: operation.responseBody, status: operation.responseStatus };
+  }
+
+  async getByRequestId(
+    siteKey: string,
+    requestId: string,
+    capability: ProtocolOperationCapability,
+  ): Promise<ProtocolOperationRecovery | null> {
+    const pathPrefix = `/admin/integration/${capability}/v1/`;
+    const operation = (
+      await this.database.db
+        .select()
+        .from(catalogProtocolOperations)
+        .where(
+          and(
+            eq(catalogProtocolOperations.siteKey, siteKey),
+            eq(catalogProtocolOperations.requestId, requestId),
+            like(catalogProtocolOperations.path, `${pathPrefix}%`),
+          ),
+        )
+        .limit(1)
+    )[0];
+
+    if (!operation) return null;
+
+    if (operation.state === 'in_progress') {
+      return { requestId: operation.requestId, status: operation.state };
+    }
+
+    if (operation.responseStatus === null || operation.responseBody === null) {
+      throw new Error('Terminal protocol operation response is missing.');
+    }
+
+    return {
+      requestId: operation.requestId,
+      response: {
+        body: operation.responseBody,
+        status: operation.responseStatus,
+      },
+      status: operation.state,
+    };
   }
 
   private async setTerminalResponse(

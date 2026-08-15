@@ -9,6 +9,7 @@ import {
   Headers,
   HttpStatus,
   Param,
+  ParseUUIDPipe,
   Patch,
   Post,
   Put,
@@ -393,6 +394,18 @@ export class CatalogProtocolController {
     return this.respond(
       reply,
       this.catalog.getOperation(actor.siteKey, operationId),
+    );
+  }
+
+  @Get('operations/by-request/:requestId')
+  getOperationByRequestId(
+    @Param('requestId', new ParseUUIDPipe()) requestId: string,
+    @ProtocolActor() actor: AuthenticatedProtocolActor,
+    @Res({ passthrough: true }) reply: FastifyReply,
+  ) {
+    return this.respond(
+      reply,
+      this.catalog.getOperationByRequestId(actor.siteKey, requestId),
     );
   }
 

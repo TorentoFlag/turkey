@@ -169,6 +169,22 @@ describe('Catalog Protocol v1', () => {
     expect(operation.statusCode).toBe(201);
     expect(operation.json()).toEqual(first.json());
 
+    const recoveryPath = `/admin/integration/catalog/v1/operations/by-request/${firstRequest.requestId}`;
+    const recovery = await app.inject({
+      method: 'GET',
+      url: recoveryPath,
+      headers: signedRequest('GET', recoveryPath).headers,
+    });
+    expect(recovery.statusCode).toBe(200);
+    expect(recovery.json()).toEqual({
+      requestId: firstRequest.requestId,
+      status: 'completed',
+      response: {
+        status: 201,
+        body: first.json(),
+      },
+    });
+
     const second = await createCategory(app, {
       name: { ru: 'Трансферы' },
       slug: 'protocol-transfers',
@@ -227,6 +243,95 @@ describe('Catalog Protocol v1', () => {
       type: 'catalog/revision-conflict',
       status: 412,
     });
+  });
+
+  it('isolates request-ID recovery by authentication, site, and capability', async () => {
+    app = await createApp(appModule);
+    const inProgressRequestId = randomUUID();
+    await pool.query(
+      `insert into catalog_protocol_operations
+        (id, site_key, idempotency_key, request_fingerprint, actor_id, request_id, method, path, state)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      [
+        randomUUID(),
+        process.env.VV_ADMIN_INTEGRATION_SITE_KEY,
+        randomUUID(),
+        '0'.repeat(64),
+        'protocol-manager-42',
+        inProgressRequestId,
+        'PATCH',
+        '/admin/integration/catalog/v1/products/example',
+        'in_progress',
+      ],
+    );
+
+    const inProgressPath = `/admin/integration/catalog/v1/operations/by-request/${inProgressRequestId}`;
+    const inProgress = await app.inject({
+      method: 'GET',
+      url: inProgressPath,
+      headers: signedRequest('GET', inProgressPath).headers,
+    });
+    expect(inProgress.statusCode).toBe(200);
+    expect(inProgress.json()).toEqual({
+      requestId: inProgressRequestId,
+      status: 'in_progress',
+    });
+    expect(inProgress.json()).not.toHaveProperty('response');
+
+    const wrongCapabilityPath = `/admin/integration/store-orders/v1/operations/by-request/${inProgressRequestId}`;
+    const wrongCapability = await app.inject({
+      method: 'GET',
+      url: wrongCapabilityPath,
+      headers: signedRequest('GET', wrongCapabilityPath).headers,
+    });
+    expect(wrongCapability.statusCode).toBe(404);
+
+    const unknownPath = `/admin/integration/catalog/v1/operations/by-request/${randomUUID()}`;
+    const unknown = await app.inject({
+      method: 'GET',
+      url: unknownPath,
+      headers: signedRequest('GET', unknownPath).headers,
+    });
+    expect(unknown.statusCode).toBe(404);
+
+    const otherSiteRequestId = randomUUID();
+    await pool.query(
+      `insert into catalog_protocol_operations
+        (id, site_key, idempotency_key, request_fingerprint, actor_id, request_id, method, path, state)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      [
+        randomUUID(),
+        'another-site',
+        randomUUID(),
+        '1'.repeat(64),
+        'another-actor',
+        otherSiteRequestId,
+        'PATCH',
+        '/admin/integration/catalog/v1/products/example',
+        'in_progress',
+      ],
+    );
+    const otherSitePath = `/admin/integration/catalog/v1/operations/by-request/${otherSiteRequestId}`;
+    const otherSite = await app.inject({
+      method: 'GET',
+      url: otherSitePath,
+      headers: signedRequest('GET', otherSitePath).headers,
+    });
+    expect(otherSite.statusCode).toBe(404);
+
+    const wrongSiteRequest = signedRequest('GET', inProgressPath);
+    const wrongSite = await app.inject({
+      method: 'GET',
+      url: inProgressPath,
+      headers: {
+        ...wrongSiteRequest.headers,
+        'x-vv-site-key': 'another-site',
+      },
+    });
+    expect(wrongSite.statusCode).toBe(401);
+    expect(JSON.stringify(wrongSite.json())).not.toContain(
+      process.env.VV_ADMIN_INTEGRATION_SECRET,
+    );
   });
 
   it('rejects a third category level with a safe problem response', async () => {
@@ -838,6 +943,7 @@ function signedRequest(
     .digest('hex');
 
   return {
+    requestId,
     headers: {
       ...(bytes.length > 0 ? { 'content-type': 'application/json' } : {}),
       'x-vv-site-key': process.env.VV_ADMIN_INTEGRATION_SITE_KEY!,

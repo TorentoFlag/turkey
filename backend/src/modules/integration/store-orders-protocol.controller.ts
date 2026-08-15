@@ -7,6 +7,7 @@ import {
   Get,
   Headers,
   Param,
+  ParseUUIDPipe,
   Patch,
   Post,
   Req,
@@ -96,6 +97,18 @@ export class StoreOrdersProtocolController {
     return this.respond(
       reply,
       this.storeOrders.getOperation(actor.siteKey, operationId),
+    );
+  }
+
+  @Get('operations/by-request/:requestId')
+  getOperationByRequestId(
+    @Param('requestId', new ParseUUIDPipe()) requestId: string,
+    @ProtocolActor() actor: AuthenticatedProtocolActor,
+    @Res({ passthrough: true }) reply: FastifyReply,
+  ) {
+    return this.respond(
+      reply,
+      this.storeOrders.getOperationByRequestId(actor.siteKey, requestId),
     );
   }
 
