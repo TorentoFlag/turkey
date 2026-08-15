@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { and, asc, count, eq, inArray, ne } from 'drizzle-orm';
+import { and, asc, count, eq, inArray, ne, sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { DatabaseService } from '../../database/database.service.js';
@@ -74,6 +74,7 @@ const createProductSchema = z
   .superRefine((product, context) => {
     if (
       product.type !== 'booking' &&
+      product.isActive &&
       (product.priceMinor == null || product.currency == null)
     ) {
       context.addIssue({
@@ -168,6 +169,25 @@ export type CatalogDestination = Destination &
     products: ProductDestination[];
   }>;
 
+export type CatalogExecutor = Pick<
+  DatabaseService['db'],
+  'delete' | 'insert' | 'select' | 'update'
+>;
+
+export type CatalogCommandOptions = Readonly<{
+  expectedRevision?: number;
+  executor?: CatalogExecutor;
+}>;
+
+export class CatalogRevisionConflictError extends Error {
+  readonly status = 412;
+  readonly type = 'catalog/revision-conflict';
+
+  constructor() {
+    super('Catalog resource revision has changed.');
+  }
+}
+
 @Injectable()
 export class CatalogService {
   constructor(
@@ -175,8 +195,10 @@ export class CatalogService {
     private readonly media: ProductMediaService,
   ) {}
 
-  async listCategories(): Promise<Category[]> {
-    return this.database.db
+  async listCategories(
+    executor: CatalogExecutor = this.database.db,
+  ): Promise<Category[]> {
+    return executor
       .select()
       .from(categories)
       .orderBy(asc(categories.sortOrder), asc(categories.name));
@@ -185,6 +207,7 @@ export class CatalogService {
   async createCategory(
     actor: AuthenticatedAdmin,
     input: unknown,
+    options: CatalogCommandOptions = {},
   ): Promise<Category> {
     const parsed = createCategorySchema.safeParse(input);
 
@@ -195,7 +218,10 @@ export class CatalogService {
     const command = parsed.data;
 
     if (command.parentId) {
-      const parent = await this.findCategory(command.parentId);
+      const parent = await this.findCategory(
+        command.parentId,
+        options.executor,
+      );
 
       if (!parent) {
         throw new NotFoundException('Parent category was not found.');
@@ -208,7 +234,7 @@ export class CatalogService {
       }
     }
 
-    return this.database.db.transaction(async (transaction) => {
+    return this.executeWrite(options.executor, async (transaction) => {
       const inserted = await transaction
         .insert(categories)
         .values(command)
@@ -240,6 +266,7 @@ export class CatalogService {
     id: string,
     actor: AuthenticatedAdmin,
     input: unknown,
+    options: CatalogCommandOptions = {},
   ): Promise<Category> {
     const parsed = updateCategorySchema.safeParse(input);
 
@@ -247,28 +274,50 @@ export class CatalogService {
       throw new BadRequestException('Invalid category payload.');
     }
 
-    const current = await this.findCategory(id);
+    const current = await this.findCategory(id, options.executor);
 
     if (!current) {
       throw new NotFoundException('Category was not found.');
     }
 
     const changes = parsed.data;
-    await this.validateCategoryParentChange(current, changes.parentId);
+    await this.validateCategoryParentChange(
+      current,
+      changes.parentId,
+      options.executor,
+    );
 
     if (changes.slug && changes.slug !== current.slug) {
-      await this.assertCategorySlugAvailable(changes.slug, current.id);
+      await this.assertCategorySlugAvailable(
+        changes.slug,
+        current.id,
+        options.executor,
+      );
     }
 
-    return this.database.db.transaction(async (transaction) => {
+    return this.executeWrite(options.executor, async (transaction) => {
       const updated = await transaction
         .update(categories)
-        .set({ ...changes, updatedAt: new Date() })
-        .where(eq(categories.id, id))
+        .set({
+          ...changes,
+          revision: sql`${categories.revision} + 1`,
+          updatedAt: new Date(),
+        })
+        .where(
+          options.expectedRevision === undefined
+            ? eq(categories.id, id)
+            : and(
+                eq(categories.id, id),
+                eq(categories.revision, options.expectedRevision),
+              ),
+        )
         .returning();
       const category = updated[0];
 
       if (!category) {
+        if (options.expectedRevision !== undefined) {
+          throw new CatalogRevisionConflictError();
+        }
         throw new NotFoundException('Category was not found.');
       }
 
@@ -284,17 +333,21 @@ export class CatalogService {
     });
   }
 
-  async deleteCategory(id: string, actor: AuthenticatedAdmin): Promise<void> {
-    const current = await this.findCategory(id);
+  async deleteCategory(
+    id: string,
+    actor: AuthenticatedAdmin,
+    options: CatalogCommandOptions = {},
+  ): Promise<void> {
+    const current = await this.findCategory(id, options.executor);
     if (!current) throw new NotFoundException('Category was not found.');
 
     const [child, product] = await Promise.all([
-      this.database.db
+      (options.executor ?? this.database.db)
         .select({ id: categories.id })
         .from(categories)
         .where(eq(categories.parentId, id))
         .limit(1),
-      this.database.db
+      (options.executor ?? this.database.db)
         .select({ id: products.id })
         .from(products)
         .where(eq(products.categoryId, id))
@@ -306,8 +359,24 @@ export class CatalogService {
       );
     }
 
-    await this.database.db.transaction(async (transaction) => {
-      await transaction.delete(categories).where(eq(categories.id, id));
+    await this.executeWrite(options.executor, async (transaction) => {
+      const deleted = await transaction
+        .delete(categories)
+        .where(
+          options.expectedRevision === undefined
+            ? eq(categories.id, id)
+            : and(
+                eq(categories.id, id),
+                eq(categories.revision, options.expectedRevision),
+              ),
+        )
+        .returning({ id: categories.id });
+      if (!deleted[0]) {
+        if (options.expectedRevision !== undefined) {
+          throw new CatalogRevisionConflictError();
+        }
+        throw new NotFoundException('Category was not found.');
+      }
       await transaction.insert(auditLog).values({
         actorId: actor.actorId,
         action: 'category.deleted',
@@ -318,15 +387,19 @@ export class CatalogService {
     });
   }
 
-  async listProducts(): Promise<Product[]> {
-    return this.database.db
+  async listProducts(
+    executor: CatalogExecutor = this.database.db,
+  ): Promise<Product[]> {
+    return executor
       .select()
       .from(products)
       .orderBy(asc(products.sortOrder), asc(products.title));
   }
 
-  async listDestinations(): Promise<CatalogDestination[]> {
-    const records = await this.database.db
+  async listDestinations(
+    executor: CatalogExecutor = this.database.db,
+  ): Promise<CatalogDestination[]> {
+    const records = await executor
       .select({ destination: destinations, membership: productDestinations })
       .from(destinations)
       .leftJoin(
@@ -356,6 +429,7 @@ export class CatalogService {
     actor: AuthenticatedAdmin,
     input: unknown,
     photo: ProductPhotoUpload | null = null,
+    options: CatalogCommandOptions = {},
   ): Promise<Destination> {
     const parsed = createDestinationSchema.safeParse(input);
     if (!parsed.success) {
@@ -368,7 +442,7 @@ export class CatalogService {
         ? await this.media.store('destinations', destinationId, photo)
         : null;
     try {
-      return await this.database.db.transaction(async (transaction) => {
+      return await this.executeWrite(options.executor, async (transaction) => {
         const inserted = await transaction
           .insert(destinations)
           .values({
@@ -405,36 +479,53 @@ export class CatalogService {
     actor: AuthenticatedAdmin,
     input: unknown,
     photo: ProductPhotoUpload | null = null,
+    options: CatalogCommandOptions = {},
   ): Promise<Destination> {
     const parsed = updateDestinationSchema.safeParse(input);
     if (!parsed.success) {
       throw new BadRequestException('Invalid destination payload.');
     }
 
-    const current = await this.findDestination(id);
+    const current = await this.findDestination(id, options.executor);
     if (!current) throw new NotFoundException('Destination was not found.');
     const changes = parsed.data;
     if (changes.slug && changes.slug !== current.slug) {
-      await this.assertDestinationSlugAvailable(changes.slug, current.id);
+      await this.assertDestinationSlugAvailable(
+        changes.slug,
+        current.id,
+        options.executor,
+      );
     }
 
     const stored = photo
       ? await this.media.store('destinations', id, photo)
       : null;
     try {
-      const destination = await this.database.db.transaction(
+      const destination = await this.executeWrite(
+        options.executor,
         async (transaction) => {
           const updated = await transaction
             .update(destinations)
             .set({
               ...changes,
               ...(stored ? { imageUrl: stored.imageUrl } : {}),
+              revision: sql`${destinations.revision} + 1`,
               updatedAt: new Date(),
             })
-            .where(eq(destinations.id, id))
+            .where(
+              options.expectedRevision === undefined
+                ? eq(destinations.id, id)
+                : and(
+                    eq(destinations.id, id),
+                    eq(destinations.revision, options.expectedRevision),
+                  ),
+            )
             .returning();
           const destination = updated[0];
           if (!destination) {
+            if (options.expectedRevision !== undefined) {
+              throw new CatalogRevisionConflictError();
+            }
             throw new NotFoundException('Destination was not found.');
           }
 
@@ -472,10 +563,11 @@ export class CatalogService {
   async deleteDestination(
     id: string,
     actor: AuthenticatedAdmin,
+    options: CatalogCommandOptions = {},
   ): Promise<void> {
-    const current = await this.findDestination(id);
+    const current = await this.findDestination(id, options.executor);
     if (!current) throw new NotFoundException('Destination was not found.');
-    const linkedProduct = await this.database.db
+    const linkedProduct = await (options.executor ?? this.database.db)
       .select({ productId: productDestinations.productId })
       .from(productDestinations)
       .where(eq(productDestinations.destinationId, id))
@@ -486,8 +578,24 @@ export class CatalogService {
       );
     }
 
-    await this.database.db.transaction(async (transaction) => {
-      await transaction.delete(destinations).where(eq(destinations.id, id));
+    await this.executeWrite(options.executor, async (transaction) => {
+      const deleted = await transaction
+        .delete(destinations)
+        .where(
+          options.expectedRevision === undefined
+            ? eq(destinations.id, id)
+            : and(
+                eq(destinations.id, id),
+                eq(destinations.revision, options.expectedRevision),
+              ),
+        )
+        .returning({ id: destinations.id });
+      if (!deleted[0]) {
+        if (options.expectedRevision !== undefined) {
+          throw new CatalogRevisionConflictError();
+        }
+        throw new NotFoundException('Destination was not found.');
+      }
       await transaction.insert(auditLog).values({
         actorId: actor.actorId,
         action: 'destination.deleted',
@@ -500,7 +608,9 @@ export class CatalogService {
     const key = current.imageUrl
       ? this.media.objectKeyFromManagedImageUrl(current.imageUrl)
       : null;
-    if (key) await this.media.deleteObject(key).catch(() => undefined);
+    if (key && !options.executor) {
+      await this.media.deleteObject(key).catch(() => undefined);
+    }
   }
 
   async upsertProductDestination(
@@ -508,14 +618,15 @@ export class CatalogService {
     productId: string,
     actor: AuthenticatedAdmin,
     input: unknown,
+    options: CatalogCommandOptions = {},
   ): Promise<ProductDestination> {
     const parsed = upsertProductDestinationSchema.safeParse(input);
     if (!parsed.success) {
       throw new BadRequestException('Invalid destination product payload.');
     }
     const [destination, product] = await Promise.all([
-      this.findDestination(destinationId),
-      this.findProduct(productId),
+      this.findDestination(destinationId, options.executor),
+      this.findProduct(productId, options.executor),
     ]);
 
     if (!destination) {
@@ -530,7 +641,7 @@ export class CatalogService {
       );
     }
 
-    return this.database.db.transaction(async (transaction) => {
+    return this.executeWrite(options.executor, async (transaction) => {
       const records = await transaction
         .insert(productDestinations)
         .values({ destinationId, productId, sortOrder: parsed.data.sortOrder })
@@ -561,8 +672,9 @@ export class CatalogService {
     destinationId: string,
     productId: string,
     actor: AuthenticatedAdmin,
+    options: CatalogCommandOptions = {},
   ): Promise<void> {
-    await this.database.db.transaction(async (transaction) => {
+    await this.executeWrite(options.executor, async (transaction) => {
       const records = await transaction
         .delete(productDestinations)
         .where(
@@ -808,6 +920,7 @@ export class CatalogService {
     actor: AuthenticatedAdmin,
     input: unknown,
     photo: ProductPhotoUpload | null = null,
+    options: CatalogCommandOptions = {},
   ): Promise<Product> {
     const parsed = createProductSchema.safeParse(input);
 
@@ -816,7 +929,10 @@ export class CatalogService {
     }
 
     const command = parsed.data;
-    const category = await this.findCategory(command.categoryId);
+    const category = await this.findCategory(
+      command.categoryId,
+      options.executor,
+    );
 
     if (!category) {
       throw new NotFoundException('Product category was not found.');
@@ -828,7 +944,7 @@ export class CatalogService {
         ? await this.media.store('products', productId, photo)
         : null;
     try {
-      return await this.database.db.transaction(async (transaction) => {
+      return await this.executeWrite(options.executor, async (transaction) => {
         const inserted = await transaction
           .insert(products)
           .values({
@@ -872,6 +988,7 @@ export class CatalogService {
     actor: AuthenticatedAdmin,
     input: unknown,
     photo: ProductPhotoUpload | null = null,
+    options: CatalogCommandOptions = {},
   ): Promise<Product> {
     const parsed = updateProductSchema.safeParse(input);
 
@@ -879,7 +996,7 @@ export class CatalogService {
       throw new BadRequestException('Invalid product payload.');
     }
 
-    const current = await this.findProduct(id);
+    const current = await this.findProduct(id, options.executor);
 
     if (!current) {
       throw new NotFoundException('Product was not found.');
@@ -889,15 +1006,23 @@ export class CatalogService {
     const type = changes.type ?? current.type;
     const priceMinor = changes.priceMinor ?? current.priceMinor;
     const currency = changes.currency ?? current.currency;
+    const isActive = changes.isActive ?? current.isActive;
 
-    if (type !== 'booking' && (priceMinor == null || currency == null)) {
+    if (
+      type !== 'booking' &&
+      isActive &&
+      (priceMinor == null || currency == null)
+    ) {
       throw new BadRequestException(
         'Payable products require priceMinor and currency.',
       );
     }
 
     if (changes.categoryId && changes.categoryId !== current.categoryId) {
-      const category = await this.findCategory(changes.categoryId);
+      const category = await this.findCategory(
+        changes.categoryId,
+        options.executor,
+      );
 
       if (!category) {
         throw new NotFoundException('Product category was not found.');
@@ -905,27 +1030,43 @@ export class CatalogService {
     }
 
     if (changes.slug && changes.slug !== current.slug) {
-      await this.assertProductSlugAvailable(changes.slug, current.id);
+      await this.assertProductSlugAvailable(
+        changes.slug,
+        current.id,
+        options.executor,
+      );
     }
 
     const stored = photo
       ? await this.media.store('products', current.id, photo)
       : null;
     try {
-      const product = await this.database.db.transaction(
+      const product = await this.executeWrite(
+        options.executor,
         async (transaction) => {
           const updated = await transaction
             .update(products)
             .set({
               ...changes,
               ...(stored ? { imageUrl: stored.imageUrl } : {}),
+              revision: sql`${products.revision} + 1`,
               updatedAt: new Date(),
             })
-            .where(eq(products.id, id))
+            .where(
+              options.expectedRevision === undefined
+                ? eq(products.id, id)
+                : and(
+                    eq(products.id, id),
+                    eq(products.revision, options.expectedRevision),
+                  ),
+            )
             .returning();
           const product = updated[0];
 
           if (!product) {
+            if (options.expectedRevision !== undefined) {
+              throw new CatalogRevisionConflictError();
+            }
             throw new NotFoundException('Product was not found.');
           }
 
@@ -961,17 +1102,21 @@ export class CatalogService {
     }
   }
 
-  async deleteProduct(id: string, actor: AuthenticatedAdmin): Promise<void> {
-    const current = await this.findProduct(id);
+  async deleteProduct(
+    id: string,
+    actor: AuthenticatedAdmin,
+    options: CatalogCommandOptions = {},
+  ): Promise<void> {
+    const current = await this.findProduct(id, options.executor);
     if (!current) throw new NotFoundException('Product was not found.');
 
     const [linkedOrder, linkedDestination] = await Promise.all([
-      this.database.db
+      (options.executor ?? this.database.db)
         .select({ id: orders.id })
         .from(orders)
         .where(eq(orders.productId, id))
         .limit(1),
-      this.database.db
+      (options.executor ?? this.database.db)
         .select({ destinationId: productDestinations.destinationId })
         .from(productDestinations)
         .where(eq(productDestinations.productId, id))
@@ -983,8 +1128,24 @@ export class CatalogService {
       );
     }
 
-    await this.database.db.transaction(async (transaction) => {
-      await transaction.delete(products).where(eq(products.id, id));
+    await this.executeWrite(options.executor, async (transaction) => {
+      const deleted = await transaction
+        .delete(products)
+        .where(
+          options.expectedRevision === undefined
+            ? eq(products.id, id)
+            : and(
+                eq(products.id, id),
+                eq(products.revision, options.expectedRevision),
+              ),
+        )
+        .returning({ id: products.id });
+      if (!deleted[0]) {
+        if (options.expectedRevision !== undefined) {
+          throw new CatalogRevisionConflictError();
+        }
+        throw new NotFoundException('Product was not found.');
+      }
       await transaction.insert(auditLog).values({
         actorId: actor.actorId,
         action: 'product.deleted',
@@ -997,11 +1158,90 @@ export class CatalogService {
     const key = current.imageUrl
       ? this.media.objectKeyFromManagedImageUrl(current.imageUrl)
       : null;
-    if (key) await this.media.deleteObject(key).catch(() => undefined);
+    if (key && !options.executor) {
+      await this.media.deleteObject(key).catch(() => undefined);
+    }
   }
 
-  private async findCategory(id: string): Promise<Category | undefined> {
-    const result = await this.database.db
+  async getCategory(
+    id: string,
+    executor?: CatalogExecutor,
+  ): Promise<Category | undefined> {
+    return this.findCategory(id, executor);
+  }
+
+  async getProduct(
+    id: string,
+    executor?: CatalogExecutor,
+  ): Promise<Product | undefined> {
+    return this.findProduct(id, executor);
+  }
+
+  async getDestination(
+    id: string,
+    executor?: CatalogExecutor,
+  ): Promise<CatalogDestination | undefined> {
+    return (await this.listDestinations(executor)).find(
+      (destination) => destination.id === id,
+    );
+  }
+
+  async inspectCategoryDeletion(
+    id: string,
+    executor: CatalogExecutor = this.database.db,
+  ): Promise<Readonly<{ categories: number; products: number }>> {
+    const [childRecords, productRecords] = await Promise.all([
+      executor
+        .select({ total: count() })
+        .from(categories)
+        .where(eq(categories.parentId, id)),
+      executor
+        .select({ total: count() })
+        .from(products)
+        .where(eq(products.categoryId, id)),
+    ]);
+    return {
+      categories: childRecords[0]?.total ?? 0,
+      products: productRecords[0]?.total ?? 0,
+    };
+  }
+
+  async inspectProductDeletion(
+    id: string,
+    executor: CatalogExecutor = this.database.db,
+  ): Promise<Readonly<{ orders: number; destinationProducts: number }>> {
+    const [orderRecords, destinationRecords] = await Promise.all([
+      executor
+        .select({ total: count() })
+        .from(orders)
+        .where(eq(orders.productId, id)),
+      executor
+        .select({ total: count() })
+        .from(productDestinations)
+        .where(eq(productDestinations.productId, id)),
+    ]);
+    return {
+      orders: orderRecords[0]?.total ?? 0,
+      destinationProducts: destinationRecords[0]?.total ?? 0,
+    };
+  }
+
+  async inspectDestinationDeletion(
+    id: string,
+    executor: CatalogExecutor = this.database.db,
+  ): Promise<Readonly<{ destinationProducts: number }>> {
+    const records = await executor
+      .select({ total: count() })
+      .from(productDestinations)
+      .where(eq(productDestinations.destinationId, id));
+    return { destinationProducts: records[0]?.total ?? 0 };
+  }
+
+  private async findCategory(
+    id: string,
+    executor: CatalogExecutor = this.database.db,
+  ): Promise<Category | undefined> {
+    const result = await executor
       .select()
       .from(categories)
       .where(eq(categories.id, id))
@@ -1010,8 +1250,11 @@ export class CatalogService {
     return result[0];
   }
 
-  private async findProduct(id: string): Promise<Product | undefined> {
-    const result = await this.database.db
+  private async findProduct(
+    id: string,
+    executor: CatalogExecutor = this.database.db,
+  ): Promise<Product | undefined> {
+    const result = await executor
       .select()
       .from(products)
       .where(eq(products.id, id))
@@ -1020,8 +1263,11 @@ export class CatalogService {
     return result[0];
   }
 
-  private async findDestination(id: string): Promise<Destination | undefined> {
-    const result = await this.database.db
+  private async findDestination(
+    id: string,
+    executor: CatalogExecutor = this.database.db,
+  ): Promise<Destination | undefined> {
+    const result = await executor
       .select()
       .from(destinations)
       .where(eq(destinations.id, id))
@@ -1070,6 +1316,7 @@ export class CatalogService {
   private async validateCategoryParentChange(
     category: Category,
     parentId: string | null | undefined,
+    executor: CatalogExecutor = this.database.db,
   ): Promise<void> {
     if (parentId === undefined || parentId === category.parentId) {
       return;
@@ -1080,7 +1327,7 @@ export class CatalogService {
     }
 
     if (parentId !== null) {
-      const parent = await this.findCategory(parentId);
+      const parent = await this.findCategory(parentId, executor);
 
       if (!parent) {
         throw new NotFoundException('Parent category was not found.');
@@ -1092,7 +1339,7 @@ export class CatalogService {
         );
       }
 
-      const child = await this.database.db
+      const child = await executor
         .select({ id: categories.id })
         .from(categories)
         .where(eq(categories.parentId, category.id))
@@ -1109,8 +1356,9 @@ export class CatalogService {
   private async assertCategorySlugAvailable(
     slug: string,
     id: string,
+    executor: CatalogExecutor = this.database.db,
   ): Promise<void> {
-    const existing = await this.database.db
+    const existing = await executor
       .select({ id: categories.id })
       .from(categories)
       .where(and(eq(categories.slug, slug), ne(categories.id, id)))
@@ -1124,8 +1372,9 @@ export class CatalogService {
   private async assertProductSlugAvailable(
     slug: string,
     id: string,
+    executor: CatalogExecutor = this.database.db,
   ): Promise<void> {
-    const existing = await this.database.db
+    const existing = await executor
       .select({ id: products.id })
       .from(products)
       .where(and(eq(products.slug, slug), ne(products.id, id)))
@@ -1139,8 +1388,9 @@ export class CatalogService {
   private async assertDestinationSlugAvailable(
     slug: string,
     id: string,
+    executor: CatalogExecutor = this.database.db,
   ): Promise<void> {
-    const existing = await this.database.db
+    const existing = await executor
       .select({ id: destinations.id })
       .from(destinations)
       .where(and(eq(destinations.slug, slug), ne(destinations.id, id)))
@@ -1149,6 +1399,15 @@ export class CatalogService {
     if (existing[0]) {
       throw new ConflictException('Destination slug already exists.');
     }
+  }
+
+  private executeWrite<T>(
+    executor: CatalogExecutor | undefined,
+    command: (executor: CatalogExecutor) => Promise<T>,
+  ): Promise<T> {
+    return executor
+      ? command(executor)
+      : this.database.db.transaction((transaction) => command(transaction));
   }
 }
 

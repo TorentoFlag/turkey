@@ -95,6 +95,63 @@ describe('CatalogMediaCleanupService', () => {
     ).resolves.toBe(1);
     expect(storage.deleted).toEqual([staleKey]);
   });
+
+  it('deletes expired unconsumed protocol uploads but retains live upload leases', async () => {
+    const expiredKey =
+      'products/uploads/11111111-1111-4111-8111-111111111111.webp';
+    const liveKey =
+      'products/uploads/22222222-2222-4222-8222-222222222222.webp';
+    const storage = new FakeProductMediaStorage([
+      { objectKey: expiredKey, lastModified: new Date('2026-08-01T00:00:00Z') },
+      { objectKey: liveKey, lastModified: new Date('2026-08-01T00:00:00Z') },
+    ]);
+    const deletedRows: string[] = [];
+    let selectCall = 0;
+    const database = {
+      db: {
+        select: () => ({
+          from: async () => {
+            selectCall += 1;
+            if (selectCall < 3) return [];
+            return [
+              {
+                id: '11111111-1111-4111-8111-111111111111',
+                objectKey: expiredKey,
+                expiresAt: new Date('2026-08-09T12:00:00Z'),
+                consumedAt: null,
+              },
+              {
+                id: '22222222-2222-4222-8222-222222222222',
+                objectKey: liveKey,
+                expiresAt: new Date('2026-08-11T12:00:00Z'),
+                consumedAt: null,
+              },
+            ];
+          },
+        }),
+        delete: () => ({
+          where: async () => {
+            deletedRows.push('expired-upload-row');
+          },
+        }),
+      },
+    };
+    const media = new ProductMediaService(
+      storage,
+      'https://turkeyplanners.test/media',
+    );
+    const service = new CatalogMediaCleanupService(
+      database as never,
+      media,
+      storage,
+    );
+
+    await expect(
+      service.runOnce(new Date('2026-08-10T12:00:00Z')),
+    ).resolves.toBe(1);
+    expect(storage.deleted).toEqual([expiredKey]);
+    expect(deletedRows).toEqual(['expired-upload-row']);
+  });
 });
 
 class FakeProductMediaStorage implements ProductMediaStorage {

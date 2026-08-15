@@ -98,6 +98,7 @@ export const destinations = pgTable(
     imageUrl: text('image_url'),
     sortOrder: integer('sort_order').default(0).notNull(),
     isActive: boolean('is_active').default(true).notNull(),
+    revision: integer('revision').default(1).notNull(),
     createdAt: timestamp('created_at', {
       mode: 'date',
       withTimezone: true,

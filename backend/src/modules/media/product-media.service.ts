@@ -35,6 +35,23 @@ export class ProductMediaService {
     entityId: string,
     upload: ProductPhotoUpload,
   ): Promise<StoredProductPhoto> {
+    return this.storeAtObjectKey(
+      `${subject}/${entityId}/${randomUUID()}.webp`,
+      upload,
+    );
+  }
+
+  async storeProtocolUpload(
+    uploadId: string,
+    upload: ProductPhotoUpload,
+  ): Promise<StoredProductPhoto> {
+    return this.storeAtObjectKey(`products/uploads/${uploadId}.webp`, upload);
+  }
+
+  private async storeAtObjectKey(
+    objectKey: string,
+    upload: ProductPhotoUpload,
+  ): Promise<StoredProductPhoto> {
     if (
       upload.byteLength !== upload.buffer.byteLength ||
       upload.byteLength > PRODUCT_PHOTO_MAX_BYTES
@@ -72,7 +89,6 @@ export class ProductMediaService {
       throw new BadRequestException('Invalid catalog photo.');
     }
 
-    const objectKey = `${subject}/${entityId}/${randomUUID()}.webp`;
     await this.storage.putWebp({ objectKey, body });
 
     return {
@@ -102,8 +118,10 @@ export class ProductMediaService {
   }
 
   isManagedObjectKey(value: string): boolean {
-    return /^(products|destinations)\/[0-9a-f-]{36}\/[0-9a-f-]{36}\.webp$/i.test(
-      value,
+    return (
+      /^(products|destinations)\/[0-9a-f-]{36}\/[0-9a-f-]{36}\.webp$/i.test(
+        value,
+      ) || /^products\/uploads\/[0-9a-f-]{36}\.webp$/i.test(value)
     );
   }
 }

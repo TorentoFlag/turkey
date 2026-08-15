@@ -24,6 +24,7 @@ export type ProtocolOperationResponse = Readonly<{
 
 export type ProtocolOperationBeginResult =
   | Readonly<{
+      owned: boolean;
       operation: CatalogProtocolOperation;
       state: 'in_progress';
     }>
@@ -80,6 +81,7 @@ export class ProtocolOperationsService {
       .onConflictDoNothing()
       .returning();
 
+    const owned = inserted[0] !== undefined;
     const operation =
       inserted[0] ?? (await this.findByIdempotencyKey(input, executor));
 
@@ -89,7 +91,7 @@ export class ProtocolOperationsService {
       }
 
       if (operation.state === 'in_progress') {
-        return { operation, state: 'in_progress' };
+        return { operation, owned, state: 'in_progress' };
       }
 
       if (

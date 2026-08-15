@@ -232,6 +232,34 @@ describe('admin catalog API', () => {
     ]);
   });
 
+  it('increments category revisions atomically across concurrent legacy updates', async () => {
+    app = await createApp(appModule);
+    const category = await createCategory(app, {
+      name: 'Конкурентная категория',
+      slug: 'concurrent-category',
+    });
+
+    const responses = await Promise.all(
+      Array.from({ length: 8 }, (_, index) =>
+        app!.inject({
+          method: 'PATCH',
+          url: `/v1/admin/categories/${category.id}`,
+          headers: adminHeaders(),
+          payload: { sortOrder: index + 1 },
+        }),
+      ),
+    );
+
+    expect(responses.map((response) => response.statusCode)).toEqual(
+      Array.from({ length: 8 }, () => 200),
+    );
+    const persisted = await pool.query<{ revision: number }>(
+      'select revision from categories where id = $1',
+      [category.id],
+    );
+    expect(persisted.rows[0]?.revision).toBe(9);
+  });
+
   it('deletes an empty category and records the authenticated actor', async () => {
     app = await createApp(appModule);
     const category = await createCategory(app, {

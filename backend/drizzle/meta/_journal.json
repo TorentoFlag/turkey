@@ -92,6 +92,13 @@
       "when": 1786801196899,
       "tag": "0013_catalog_protocol_v1",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1786802211203,
+      "tag": "0014_destination_protocol_revision",
+      "breakpoints": true
     }
   ]
 }
