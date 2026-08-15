@@ -99,6 +99,13 @@
       "when": 1786802211203,
       "tag": "0014_destination_protocol_revision",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1786810578836,
+      "tag": "0015_synthetic_scenario_runs",
+      "breakpoints": true
     }
   ]
 }

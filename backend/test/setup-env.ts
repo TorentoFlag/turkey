@@ -5,3 +5,5 @@ process.env.MINIO_SECRET_KEY ??= 'catalog-media-test-secret';
 process.env.MEDIA_PUBLIC_BASE_URL ??= 'https://turkeyplanners.test/media';
 process.env.VV_ADMIN_INTEGRATION_SECRET ??= 'test-vv-admin-integration-secret';
 process.env.VV_ADMIN_INTEGRATION_SITE_KEY ??= 'turkiye';
+process.env.VV_SCENARIO_AUTH_SECRET ??= 'test-vv-scenario-auth-secret';
+process.env.VV_SCENARIO_SITE_ID ??= '018f71c1-4afe-7b1d-9f55-123456789abc';

@@ -19,6 +19,8 @@ const envSchema = z.object({
   ADMIN_API_KEY: z.string().trim().min(1),
   VV_ADMIN_INTEGRATION_SECRET: z.string().trim().min(1),
   VV_ADMIN_INTEGRATION_SITE_KEY: z.string().trim().min(1).max(128),
+  VV_SCENARIO_AUTH_SECRET: z.string().trim().min(1),
+  VV_SCENARIO_SITE_ID: z.uuid(),
   MINIO_ENDPOINT: z.string().url(),
   MINIO_BUCKET: z.string().trim().min(3).max(63),
   MINIO_ACCESS_KEY: z.string().trim().min(3),
@@ -30,7 +32,20 @@ const envSchema = z.object({
       const url = new URL(value);
       return url.protocol === 'https:' && !url.search && !url.hash;
     }),
-  ARC_API_BASE_URL: z.string().url().default('https://api.arcpay.space/v1'),
+  ARC_API_BASE_URL: z
+    .string()
+    .url()
+    .refine((value) => {
+      const url = new URL(value);
+      return (
+        url.protocol === 'https:' &&
+        !url.username &&
+        !url.password &&
+        !url.search &&
+        !url.hash
+      );
+    })
+    .default('https://api.arcpay.space/v1'),
   ARC_SECRET_API_KEY: z.string().trim().min(1).optional(),
   ARC_WEBHOOK_SECRET: z.string().trim().min(1).optional(),
   RESEND_API_KEY: z.string().trim().min(1).optional(),

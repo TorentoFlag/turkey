@@ -80,10 +80,13 @@ reverse proxy terminates TLS and routes the public storefront/API URLs.
 Before first launch, create an operator-only environment file outside Git. It
 must include `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, a
 Docker-network `DATABASE_URL` using host `postgres`, `ADMIN_API_KEY`, both Arc
-keys, `RESEND_API_KEY`, `RESEND_FROM`, `SLACK_WEBHOOK_URL`, `WEB_APP_ORIGIN`
-and `NEXT_PUBLIC_API_BASE_URL`. The public origin must be HTTPS and exactly
-match the browser origin; neither it nor any `NEXT_PUBLIC_*` value may contain a
-secret. See [`../docs/development/production-runbook.md`](../docs/development/production-runbook.md)
+keys, `RESEND_API_KEY`, `RESEND_FROM`, `SLACK_WEBHOOK_URL`, `WEB_APP_ORIGIN`,
+the VV integration and scenario settings, and `NEXT_PUBLIC_API_BASE_URL`.
+`VV_SCENARIO_AUTH_SECRET` must exactly match the secret configured for the VV
+Admin scenario runner; it is separate from `VV_ADMIN_INTEGRATION_SECRET`. The
+public origin must be HTTPS and exactly match the browser origin; neither it nor
+any `NEXT_PUBLIC_*` value may contain a secret. See
+[`../docs/development/production-runbook.md`](../docs/development/production-runbook.md)
 for the complete checklist.
 
 Build and start only after the checklist is complete:

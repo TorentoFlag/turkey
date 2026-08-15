@@ -11,6 +11,7 @@ import { z } from 'zod';
 import { DatabaseService } from '../../database/database.service.js';
 import {
   orders,
+  auditLog,
   outboxEvents,
   payments,
   providerWebhookEvents,
@@ -211,6 +212,27 @@ export class PaymentsService {
           : undefined);
 
       if (!payment) {
+        return;
+      }
+
+      const paymentOrder = (
+        await transaction
+          .select({ isScenario: orders.isScenario })
+          .from(orders)
+          .where(eq(orders.id, payment.orderId))
+          .limit(1)
+      )[0];
+
+      if (paymentOrder?.isScenario) {
+        if (parsed.data.event_type === 'payment.captured') {
+          await transaction.insert(auditLog).values({
+            actorId: 'arc-webhook',
+            action: 'synthetic_payment.capture_ignored',
+            entityType: 'order',
+            entityId: payment.orderId,
+            payload: { eventType: parsed.data.event_type },
+          });
+        }
         return;
       }
 

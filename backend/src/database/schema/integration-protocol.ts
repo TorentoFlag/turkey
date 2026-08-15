@@ -10,10 +10,53 @@ import {
   uuid,
   varchar,
 } from 'drizzle-orm/pg-core';
+import { orders } from './orders.js';
 
 export const catalogProtocolOperationState = pgEnum(
   'catalog_protocol_operation_state',
   ['in_progress', 'completed', 'failed'],
+);
+
+export const syntheticScenarioRunState = pgEnum(
+  'synthetic_scenario_run_state',
+  ['in_progress', 'completed'],
+);
+
+export const syntheticScenarioRuns = pgTable(
+  'synthetic_scenario_runs',
+  {
+    id: uuid('id').primaryKey(),
+    siteId: uuid('site_id').notNull(),
+    scenarioKey: varchar('scenario_key', { length: 128 }).notNull(),
+    requestedAt: timestamp('requested_at', {
+      mode: 'date',
+      withTimezone: true,
+    }).notNull(),
+    state: syntheticScenarioRunState('state').notNull(),
+    orderId: uuid('order_id').references(() => orders.id),
+    responseBody: jsonb('response_body'),
+    createdAt: timestamp('created_at', {
+      mode: 'date',
+      withTimezone: true,
+    })
+      .defaultNow()
+      .notNull(),
+    completedAt: timestamp('completed_at', {
+      mode: 'date',
+      withTimezone: true,
+    }),
+  },
+  (table) => [
+    uniqueIndex('synthetic_scenario_runs_identity_idx').on(
+      table.id,
+      table.siteId,
+      table.scenarioKey,
+    ),
+    index('synthetic_scenario_runs_site_created_idx').on(
+      table.siteId,
+      table.createdAt,
+    ),
+  ],
 );
 
 export const catalogProtocolOperations = pgTable(
@@ -98,3 +141,4 @@ export type NewCatalogProtocolOperation =
 export type CatalogProtocolUpload = typeof catalogProtocolUploads.$inferSelect;
 export type NewCatalogProtocolUpload =
   typeof catalogProtocolUploads.$inferInsert;
+export type SyntheticScenarioRun = typeof syntheticScenarioRuns.$inferSelect;

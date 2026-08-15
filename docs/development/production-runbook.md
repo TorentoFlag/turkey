@@ -41,6 +41,10 @@ environment file.
 | `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` | PostgreSQL bootstrap                 | unique production values                                                                |
 | `DATABASE_URL`                                      | API, worker, migrate                 | `postgresql://...@postgres:5432/...`; host must be `postgres` inside Compose            |
 | `ADMIN_API_KEY`                                     | trusted external admin               | long random server-to-server secret; admin sends it only in `X-Admin-Api-Key`           |
+| `VV_ADMIN_INTEGRATION_SECRET`                       | VV integration routes                | HMAC secret configured for this site's non-scenario VV integration calls                |
+| `VV_ADMIN_INTEGRATION_SITE_KEY`                     | VV integration routes                | exact VV site key assigned to this Turkiye integration                                  |
+| `VV_SCENARIO_AUTH_SECRET`                           | VV synthetic scenario runner         | exact same HMAC secret configured in VV Admin as `VV_SCENARIO_AUTH_SECRET`              |
+| `VV_SCENARIO_SITE_ID`                               | VV synthetic scenario runner         | exact VV site UUID; signed request bodies with any other site ID are rejected           |
 | `MINIO_ROOT_USER`, `MINIO_ROOT_PASSWORD`            | MinIO bootstrap/init only            | unique root credentials; never passed to API or worker                                  |
 | `MINIO_BUCKET`                                      | MinIO/API/worker                     | optional; defaults to `turkiye-catalog-media`                                           |
 | `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`              | API and worker                       | dedicated non-root user limited to the bucket's `products/` and `destinations/` objects |
@@ -57,6 +61,12 @@ environment file.
 `NEXT_PUBLIC_*` values are compiled into frontend output. They must not contain
 keys, Slack URLs, database URLs or credentials.
 
+The checkout-payment-reached scenario is enabled only with an Arc sandbox/test
+key (`sk_test_...`), an HTTPS Arc API base URL and an exact HTTPS storefront
+origin. Without that complete proof it returns stable `not_configured` evidence
+before creating an order or contacting Arc. Never configure a live Arc key to
+make this scenario pass.
+
 ## Preflight
 
 1. Run `npm run verify` in `backend` and frontend lint/typecheck/build from the
@@ -67,9 +77,12 @@ keys, Slack URLs, database URLs or credentials.
    authorized.
 4. Confirm the external admin uses exactly `X-Admin-Api-Key` and
    `X-Admin-Actor-Id`; do not introduce browser JWT/Bearer access to Admin API.
-5. Back up the database before applying a new migration. Inspect the migration
+5. Confirm VV Admin and Turkiye use the same `VV_SCENARIO_AUTH_SECRET`, and that
+   `VV_SCENARIO_SITE_ID` is the UUID assigned to this site. Do not reuse the
+   general integration secret implicitly.
+6. Back up the database before applying a new migration. Inspect the migration
    SQL and planned downtime/lock risk.
-6. Confirm the `/media/` reverse-proxy block targets only
+7. Confirm the `/media/` reverse-proxy block targets only
    `turkiye-catalog-media/`; do not publish a MinIO port or Console route.
 
 ## Launch and observe

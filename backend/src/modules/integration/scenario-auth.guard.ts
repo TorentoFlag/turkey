@@ -26,7 +26,7 @@ export class ScenarioAuthGuard implements CanActivate {
         path: request.url,
         signature: readHeader(request, 'x-vv-admin-signature'),
         timestamp: readHeader(request, 'x-vv-admin-timestamp'),
-        secret: this.config.get('VV_ADMIN_INTEGRATION_SECRET', { infer: true }),
+        secret: this.config.get('VV_SCENARIO_AUTH_SECRET', { infer: true }),
       })
     ) {
       return true;

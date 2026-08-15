@@ -6,29 +6,49 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { z } from 'zod';
+import type { AppEnv } from '../../config/env.js';
 import { ScenarioAuthGuard } from './scenario-auth.guard.js';
 import { TurkiyeSyntheticScenarioService } from './turkiye-synthetic-scenario.service.js';
 
 @Controller('admin/integration/scenarios')
 @UseGuards(ScenarioAuthGuard)
 export class TurkiyeSyntheticScenarioController {
-  constructor(private readonly scenarios: TurkiyeSyntheticScenarioService) {}
+  constructor(
+    private readonly config: ConfigService<AppEnv, true>,
+    private readonly scenarios: TurkiyeSyntheticScenarioService,
+  ) {}
 
   @Post('checkout-payment-reached/run')
   @HttpCode(200)
   runCheckoutPaymentReached(@Body() body: unknown) {
-    readRunId(body);
-    return this.scenarios.runCheckoutPaymentReached();
+    return this.scenarios.runCheckoutPaymentReached(
+      readScenarioInput(
+        body,
+        this.config.get('VV_SCENARIO_SITE_ID', { infer: true }),
+      ),
+    );
   }
 }
 
-function readRunId(body: unknown): string {
-  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+const scenarioInputSchema = z
+  .object({
+    runId: z.uuid(),
+    siteId: z.uuid(),
+    scenarioKey: z.literal('checkout_payment_reached'),
+    requestedAt: z.iso.datetime({ offset: false }),
+  })
+  .strict();
+
+function readScenarioInput(body: unknown, expectedSiteId: string) {
+  const parsed = scenarioInputSchema.safeParse(body);
+  if (!parsed.success || parsed.data.siteId !== expectedSiteId) {
     throw new BadRequestException('Scenario run body is invalid.');
   }
-  const runId = (body as { runId?: unknown }).runId;
-  if (typeof runId !== 'string' || runId.trim().length === 0) {
-    throw new BadRequestException('Scenario run ID is required.');
+  const requestedAt = Date.parse(parsed.data.requestedAt);
+  if (Math.abs(Date.now() - requestedAt) > 300_000) {
+    throw new BadRequestException('Scenario request timestamp is stale.');
   }
-  return runId.trim();
+  return parsed.data;
 }

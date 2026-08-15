@@ -9,6 +9,8 @@ const valid = {
   ADMIN_API_KEY: 'test-static-admin-key',
   VV_ADMIN_INTEGRATION_SECRET: 'test-vv-admin-integration-secret',
   VV_ADMIN_INTEGRATION_SITE_KEY: 'turkiye',
+  VV_SCENARIO_AUTH_SECRET: 'test-vv-scenario-auth-secret',
+  VV_SCENARIO_SITE_ID: '018f71c1-4afe-7b1d-9f55-123456789abc',
   MINIO_ENDPOINT: 'http://minio:9000',
   MINIO_BUCKET: 'turkiye-catalog-media',
   MINIO_ACCESS_KEY: 'catalog-media-app',
@@ -26,6 +28,8 @@ describe('parseEnv', () => {
       ADMIN_API_KEY: valid.ADMIN_API_KEY,
       VV_ADMIN_INTEGRATION_SECRET: valid.VV_ADMIN_INTEGRATION_SECRET,
       VV_ADMIN_INTEGRATION_SITE_KEY: valid.VV_ADMIN_INTEGRATION_SITE_KEY,
+      VV_SCENARIO_AUTH_SECRET: valid.VV_SCENARIO_AUTH_SECRET,
+      VV_SCENARIO_SITE_ID: valid.VV_SCENARIO_SITE_ID,
       MINIO_ENDPOINT: valid.MINIO_ENDPOINT,
       MINIO_BUCKET: valid.MINIO_BUCKET,
       MINIO_ACCESS_KEY: valid.MINIO_ACCESS_KEY,
@@ -47,6 +51,9 @@ describe('parseEnv', () => {
     { ...valid, ADMIN_API_KEY: '   ' },
     { ...valid, VV_ADMIN_INTEGRATION_SECRET: undefined },
     { ...valid, VV_ADMIN_INTEGRATION_SITE_KEY: '   ' },
+    { ...valid, VV_SCENARIO_AUTH_SECRET: undefined },
+    { ...valid, VV_SCENARIO_SITE_ID: 'not-a-uuid' },
+    { ...valid, ARC_API_BASE_URL: 'http://arc.example.test/v1' },
     { ...valid, WORKER_POLL_INTERVAL_MS: '249' },
   ])('rejects invalid server configuration', (input) => {
     expect(() => parseEnv(input)).toThrow(/configuration/i);

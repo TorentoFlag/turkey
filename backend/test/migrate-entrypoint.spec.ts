@@ -44,6 +44,8 @@ describe('db:migrate entrypoint', () => {
             ADMIN_API_KEY: 'test-static-admin-key',
             VV_ADMIN_INTEGRATION_SECRET: 'test-vv-admin-integration-secret',
             VV_ADMIN_INTEGRATION_SITE_KEY: 'turkiye',
+            VV_SCENARIO_AUTH_SECRET: 'test-vv-scenario-auth-secret',
+            VV_SCENARIO_SITE_ID: '018f71c1-4afe-7b1d-9f55-123456789abc',
             MINIO_ENDPOINT: 'http://127.0.0.1:9000',
             MINIO_BUCKET: 'turkiye-test-media',
             MINIO_ACCESS_KEY: 'test-minio-access-key',

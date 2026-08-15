@@ -73,6 +73,7 @@ export class NotificationDeliveryService {
         email: orders.email,
         productTitle: orders.productTitle,
         productType: orders.productType,
+        isScenario: orders.isScenario,
       })
       .from(orders)
       .where(eq(orders.id, payload.data.orderId))
@@ -82,6 +83,7 @@ export class NotificationDeliveryService {
     if (!order) {
       throw new Error('Accepted order was not found.');
     }
+    if (order.isScenario) return;
 
     await this.sendEmail({
       to: order.email,

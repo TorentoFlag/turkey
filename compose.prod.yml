@@ -4,6 +4,10 @@ x-backend-environment: &backend-environment
   DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL for the Docker network, for example postgresql://turkiye:password@postgres:5432/turkiye}
   LOG_LEVEL: ${LOG_LEVEL:-info}
   ADMIN_API_KEY: ${ADMIN_API_KEY:?Set ADMIN_API_KEY}
+  VV_ADMIN_INTEGRATION_SECRET: ${VV_ADMIN_INTEGRATION_SECRET:?Set VV_ADMIN_INTEGRATION_SECRET}
+  VV_ADMIN_INTEGRATION_SITE_KEY: ${VV_ADMIN_INTEGRATION_SITE_KEY:-turkiye}
+  VV_SCENARIO_AUTH_SECRET: ${VV_SCENARIO_AUTH_SECRET:?Set VV_SCENARIO_AUTH_SECRET to the same secret configured in VV Admin}
+  VV_SCENARIO_SITE_ID: ${VV_SCENARIO_SITE_ID:?Set VV_SCENARIO_SITE_ID to the Turkiye site UUID in VV Admin}
   MINIO_ENDPOINT: http://minio:9000
   MINIO_BUCKET: ${MINIO_BUCKET:-turkiye-catalog-media}
   MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?Set MINIO_ACCESS_KEY}
