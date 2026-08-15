@@ -12,7 +12,7 @@ import { registerRequestContext } from './request-context.js';
 import { PRODUCT_PHOTO_MAX_BYTES } from '../modules/media/product-media.service.js';
 
 const protocolMetadataAllowanceBytes = 32 * 1024;
-const protocolRawBodyMaxBytes =
+export const protocolRawBodyMaxBytes =
   PRODUCT_PHOTO_MAX_BYTES + protocolMetadataAllowanceBytes;
 
 export async function createApiApp(
@@ -55,7 +55,16 @@ export async function createApiApp(
     }
 
     request.rawBody = Buffer.concat(chunks, size);
-    return Readable.from([request.rawBody]);
+    const replay = Readable.from([request.rawBody]);
+    Object.assign(replay, {
+      headers: request.raw.headers,
+      method: request.raw.method,
+      receivedEncodedLength: request.rawBody.length,
+      url: request.raw.url,
+    });
+    request.raw = replay as typeof request.raw;
+
+    return replay;
   });
 
   await fastify.register(multipart, {
@@ -70,7 +79,7 @@ export async function createApiApp(
   fastify.removeContentTypeParser('application/json');
   fastify.addContentTypeParser(
     'application/json',
-    { parseAs: 'buffer' },
+    { bodyLimit: protocolRawBodyMaxBytes, parseAs: 'buffer' },
     (request, body, done) => {
       if (request.url.split('?')[0] === '/v1/webhooks/arc') {
         done(null, body);

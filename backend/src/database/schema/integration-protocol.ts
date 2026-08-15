@@ -48,6 +48,10 @@ export const catalogProtocolOperations = pgTable(
       table.siteKey,
       table.idempotencyKey,
     ),
+    uniqueIndex('catalog_protocol_operations_site_request_idx').on(
+      table.siteKey,
+      table.requestId,
+    ),
     index('catalog_protocol_operations_site_operation_idx').on(
       table.siteKey,
       table.id,

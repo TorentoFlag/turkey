@@ -89,14 +89,7 @@
     {
       "idx": 12,
       "version": "7",
-      "when": 1786800330889,
-      "tag": "0012_catalog_protocol_v1",
-      "breakpoints": true
-    },
-    {
-      "idx": 13,
-      "version": "7",
-      "when": 1786800392445,
+      "when": 1786801196899,
       "tag": "0013_catalog_protocol_v1",
       "breakpoints": true
     }

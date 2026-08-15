@@ -1,6 +1,6 @@
 {
-  "id": "efd97250-b7e1-41a0-b12a-4202c728802d",
-  "prevId": "4cb540c0-3777-42a6-9c4c-3b6fc65c8e28",
+  "id": "767ab980-f527-460c-94d1-c3d49e87effa",
+  "prevId": "e6b422cb-ea48-4c04-ad36-2cfca5ce7689",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -129,8 +129,12 @@
           "name": "sessions_user_id_users_id_fk",
           "tableFrom": "sessions",
           "tableTo": "users",
-          "columnsFrom": ["user_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -140,7 +144,9 @@
         "sessions_token_hash_unique": {
           "name": "sessions_token_hash_unique",
           "nullsNotDistinct": false,
-          "columns": ["token_hash"]
+          "columns": [
+            "token_hash"
+          ]
         }
       },
       "policies": {},
@@ -192,7 +198,9 @@
         "users_email_unique": {
           "name": "users_email_unique",
           "nullsNotDistinct": false,
-          "columns": ["email"]
+          "columns": [
+            "email"
+          ]
         }
       },
       "policies": {},
@@ -404,8 +412,12 @@
           "name": "categories_parent_id_categories_id_fk",
           "tableFrom": "categories",
           "tableTo": "categories",
-          "columnsFrom": ["parent_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "parent_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -415,7 +427,9 @@
         "categories_slug_unique": {
           "name": "categories_slug_unique",
           "nullsNotDistinct": false,
-          "columns": ["slug"]
+          "columns": [
+            "slug"
+          ]
         }
       },
       "policies": {},
@@ -521,7 +535,9 @@
         "destinations_slug_unique": {
           "name": "destinations_slug_unique",
           "nullsNotDistinct": false,
-          "columns": ["slug"]
+          "columns": [
+            "slug"
+          ]
         }
       },
       "policies": {},
@@ -580,8 +596,12 @@
           "name": "product_destinations_product_id_products_id_fk",
           "tableFrom": "product_destinations",
           "tableTo": "products",
-          "columnsFrom": ["product_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "product_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -589,8 +609,12 @@
           "name": "product_destinations_destination_id_destinations_id_fk",
           "tableFrom": "product_destinations",
           "tableTo": "destinations",
-          "columnsFrom": ["destination_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "destination_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -598,7 +622,10 @@
       "compositePrimaryKeys": {
         "product_destinations_pkey": {
           "name": "product_destinations_pkey",
-          "columns": ["product_id", "destination_id"]
+          "columns": [
+            "product_id",
+            "destination_id"
+          ]
         }
       },
       "uniqueConstraints": {},
@@ -736,8 +763,12 @@
           "name": "products_category_id_categories_id_fk",
           "tableFrom": "products",
           "tableTo": "categories",
-          "columnsFrom": ["category_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "category_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -747,7 +778,9 @@
         "products_slug_unique": {
           "name": "products_slug_unique",
           "nullsNotDistinct": false,
-          "columns": ["slug"]
+          "columns": [
+            "slug"
+          ]
         }
       },
       "policies": {},
@@ -852,6 +885,27 @@
             },
             {
               "expression": "idempotency_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "catalog_protocol_operations_site_request_idx": {
+          "name": "catalog_protocol_operations_site_request_idx",
+          "columns": [
+            {
+              "expression": "site_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "request_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -1085,7 +1139,9 @@
         "outbox_events_idempotency_key_unique": {
           "name": "outbox_events_idempotency_key_unique",
           "nullsNotDistinct": false,
-          "columns": ["idempotency_key"]
+          "columns": [
+            "idempotency_key"
+          ]
         }
       },
       "policies": {},
@@ -1261,8 +1317,12 @@
           "name": "orders_user_id_users_id_fk",
           "tableFrom": "orders",
           "tableTo": "users",
-          "columnsFrom": ["user_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -1270,8 +1330,12 @@
           "name": "orders_product_id_products_id_fk",
           "tableFrom": "orders",
           "tableTo": "products",
-          "columnsFrom": ["product_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "product_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -1281,7 +1345,9 @@
         "orders_idempotency_key_unique": {
           "name": "orders_idempotency_key_unique",
           "nullsNotDistinct": false,
-          "columns": ["idempotency_key"]
+          "columns": [
+            "idempotency_key"
+          ]
         }
       },
       "policies": {},
@@ -1392,8 +1458,12 @@
           "name": "payments_order_id_orders_id_fk",
           "tableFrom": "payments",
           "tableTo": "orders",
-          "columnsFrom": ["order_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "order_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -1403,22 +1473,30 @@
         "payments_order_id_unique": {
           "name": "payments_order_id_unique",
           "nullsNotDistinct": false,
-          "columns": ["order_id"]
+          "columns": [
+            "order_id"
+          ]
         },
         "payments_provider_checkout_id_unique": {
           "name": "payments_provider_checkout_id_unique",
           "nullsNotDistinct": false,
-          "columns": ["provider_checkout_id"]
+          "columns": [
+            "provider_checkout_id"
+          ]
         },
         "payments_provider_payment_id_unique": {
           "name": "payments_provider_payment_id_unique",
           "nullsNotDistinct": false,
-          "columns": ["provider_payment_id"]
+          "columns": [
+            "provider_payment_id"
+          ]
         },
         "payments_idempotency_key_unique": {
           "name": "payments_idempotency_key_unique",
           "nullsNotDistinct": false,
-          "columns": ["idempotency_key"]
+          "columns": [
+            "idempotency_key"
+          ]
         }
       },
       "policies": {},
@@ -1561,8 +1639,12 @@
           "name": "refunds_payment_id_payments_id_fk",
           "tableFrom": "refunds",
           "tableTo": "payments",
-          "columnsFrom": ["payment_id"],
-          "columnsTo": ["id"],
+          "columnsFrom": [
+            "payment_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -1572,17 +1654,23 @@
         "refunds_payment_id_unique": {
           "name": "refunds_payment_id_unique",
           "nullsNotDistinct": false,
-          "columns": ["payment_id"]
+          "columns": [
+            "payment_id"
+          ]
         },
         "refunds_provider_refund_id_unique": {
           "name": "refunds_provider_refund_id_unique",
           "nullsNotDistinct": false,
-          "columns": ["provider_refund_id"]
+          "columns": [
+            "provider_refund_id"
+          ]
         },
         "refunds_idempotency_key_unique": {
           "name": "refunds_idempotency_key_unique",
           "nullsNotDistinct": false,
-          "columns": ["idempotency_key"]
+          "columns": [
+            "idempotency_key"
+          ]
         }
       },
       "policies": {},
@@ -1594,22 +1682,38 @@
     "public.product_type": {
       "name": "product_type",
       "schema": "public",
-      "values": ["auto_delivery", "physical", "booking"]
+      "values": [
+        "auto_delivery",
+        "physical",
+        "booking"
+      ]
     },
     "public.catalog_protocol_operation_state": {
       "name": "catalog_protocol_operation_state",
       "schema": "public",
-      "values": ["in_progress", "completed", "failed"]
+      "values": [
+        "in_progress",
+        "completed",
+        "failed"
+      ]
     },
     "public.payment_state": {
       "name": "payment_state",
       "schema": "public",
-      "values": ["pending", "succeeded", "failed"]
+      "values": [
+        "pending",
+        "succeeded",
+        "failed"
+      ]
     },
     "public.refund_state": {
       "name": "refund_state",
       "schema": "public",
-      "values": ["processing", "succeeded", "failed"]
+      "values": [
+        "processing",
+        "succeeded",
+        "failed"
+      ]
     }
   },
   "schemas": {},

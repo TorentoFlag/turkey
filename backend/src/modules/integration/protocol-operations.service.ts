@@ -47,6 +47,15 @@ export class ProtocolIdempotencyConflictError extends Error {
   }
 }
 
+export class ProtocolRequestIdConflictError extends Error {
+  readonly status = 409;
+  readonly type = 'catalog/request-id-conflict';
+
+  constructor() {
+    super('Protocol request ID is already associated with another request.');
+  }
+}
+
 @Injectable()
 export class ProtocolOperationsService {
   constructor(private readonly database: DatabaseService) {}
@@ -68,56 +77,81 @@ export class ProtocolOperationsService {
         siteKey: input.siteKey,
         state: 'in_progress',
       })
-      .onConflictDoNothing({
-        target: [
-          catalogProtocolOperations.siteKey,
-          catalogProtocolOperations.idempotencyKey,
-        ],
-      })
+      .onConflictDoNothing()
       .returning();
 
     const operation =
-      inserted[0] ??
-      (
-        await executor
-          .select()
-          .from(catalogProtocolOperations)
-          .where(
-            and(
-              eq(catalogProtocolOperations.siteKey, input.siteKey),
-              eq(
-                catalogProtocolOperations.idempotencyKey,
-                input.idempotencyKey,
-              ),
-            ),
-          )
-          .limit(1)
-      )[0];
+      inserted[0] ?? (await this.findByIdempotencyKey(input, executor));
 
-    if (!operation) {
-      throw new Error('Protocol operation initialization failed.');
+    if (operation) {
+      if (operation.requestFingerprint !== input.requestFingerprint) {
+        throw new ProtocolIdempotencyConflictError();
+      }
+
+      if (operation.state === 'in_progress') {
+        return { operation, state: 'in_progress' };
+      }
+
+      if (
+        operation.responseStatus === null ||
+        operation.responseBody === null
+      ) {
+        throw new Error('Terminal protocol operation response is missing.');
+      }
+
+      return {
+        operation,
+        response: {
+          body: operation.responseBody,
+          status: operation.responseStatus,
+        },
+        state: operation.state,
+      };
     }
 
-    if (operation.requestFingerprint !== input.requestFingerprint) {
-      throw new ProtocolIdempotencyConflictError();
+    const existingRequestId = await this.findByRequestId(input, executor);
+
+    if (existingRequestId) {
+      throw new ProtocolRequestIdConflictError();
     }
 
-    if (operation.state === 'in_progress') {
-      return { operation, state: 'in_progress' };
-    }
+    throw new Error('Protocol operation initialization failed.');
+  }
 
-    if (operation.responseStatus === null || operation.responseBody === null) {
-      throw new Error('Terminal protocol operation response is missing.');
-    }
+  private async findByIdempotencyKey(
+    input: ProtocolOperationInput,
+    executor: ProtocolOperationExecutor,
+  ): Promise<CatalogProtocolOperation | undefined> {
+    return (
+      await executor
+        .select()
+        .from(catalogProtocolOperations)
+        .where(
+          and(
+            eq(catalogProtocolOperations.siteKey, input.siteKey),
+            eq(catalogProtocolOperations.idempotencyKey, input.idempotencyKey),
+          ),
+        )
+        .limit(1)
+    )[0];
+  }
 
-    return {
-      operation,
-      response: {
-        body: operation.responseBody,
-        status: operation.responseStatus,
-      },
-      state: operation.state,
-    };
+  private async findByRequestId(
+    input: ProtocolOperationInput,
+    executor: ProtocolOperationExecutor,
+  ): Promise<CatalogProtocolOperation | undefined> {
+    return (
+      await executor
+        .select()
+        .from(catalogProtocolOperations)
+        .where(
+          and(
+            eq(catalogProtocolOperations.siteKey, input.siteKey),
+            eq(catalogProtocolOperations.requestId, input.requestId),
+          ),
+        )
+        .limit(1)
+    )[0];
   }
 
   async complete(

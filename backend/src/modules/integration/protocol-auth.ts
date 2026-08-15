@@ -21,6 +21,8 @@ export type ProtocolAuthenticationInput = Readonly<{
 const actorIdMaxLength = 128;
 const signatureVersion = '1';
 const timestampWindowMilliseconds = 300_000;
+const strictUtcTimestampPattern =
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/;
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -85,10 +87,18 @@ function readHeader(
 }
 
 function isCurrentTimestamp(value: string, now: Date): boolean {
+  if (!strictUtcTimestampPattern.test(value)) {
+    return false;
+  }
+
   const timestamp = Date.parse(value);
+  const normalizedValue = value.includes('.')
+    ? value
+    : `${value.slice(0, -1)}.000Z`;
 
   return (
     Number.isFinite(timestamp) &&
+    new Date(timestamp).toISOString() === normalizedValue &&
     Math.abs(now.getTime() - timestamp) <= timestampWindowMilliseconds
   );
 }
