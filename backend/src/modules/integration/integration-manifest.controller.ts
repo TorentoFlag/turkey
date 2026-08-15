@@ -36,7 +36,22 @@ export const turkiyeIntegrationManifest = {
       900,
     ),
   ],
-  syntheticScenarios: [],
+  syntheticScenarios: [
+    {
+      key: 'checkout_payment_reached',
+      label: 'Checkout reaches payment',
+      kind: 'synthetic_transaction',
+      productionSafe: true,
+      effect: 'creates_synthetic_entities',
+      requiresCleanup: true,
+      timeoutMs: 60_000,
+      intervalSeconds: 21_600,
+      run: {
+        method: 'POST',
+        url: 'https://turkeyplanners.com/api/admin/integration/scenarios/checkout-payment-reached/run',
+      },
+    },
+  ],
   actions: [],
   catalog: turkiyeCatalogCapability,
   storeOrders: {
