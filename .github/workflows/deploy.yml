@@ -17,9 +17,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - name: Checkout deployment script
-        uses: actions/checkout@v4
-
       - name: Configure pinned SSH access
         env:
           DEPLOY_HOST: ${{ secrets.TURKIYE_DEPLOY_HOST }}
@@ -30,4 +27,4 @@ jobs:
           printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
           printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
-          ssh -i ~/.ssh/id_ed25519 -o BatchMode=yes -o StrictHostKeyChecking=yes "root@$DEPLOY_HOST" bash -s < scripts/deploy.sh
+          ssh -i ~/.ssh/id_ed25519 -o BatchMode=yes -o StrictHostKeyChecking=yes "root@$DEPLOY_HOST" /opt/turkiye/scripts/deploy.sh
