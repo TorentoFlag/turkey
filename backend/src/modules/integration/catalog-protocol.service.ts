@@ -19,6 +19,10 @@ import {
   ProductMediaService,
   type ProductPhotoUpload,
 } from '../media/product-media.service.js';
+import {
+  OrderHistoryProtectedError,
+  OrdersService,
+} from '../orders/orders.service.js';
 import type { AuthenticatedProtocolActor } from './protocol-auth.js';
 import { ProtocolOperationsService } from './protocol-operations.service.js';
 import {
@@ -68,6 +72,7 @@ export class CatalogProtocolService {
     private readonly catalog: CatalogService,
     private readonly operations: ProtocolOperationsService,
     private readonly media: ProductMediaService,
+    private readonly orders: OrdersService,
   ) {}
 
   getCapabilities() {
@@ -428,6 +433,13 @@ export class CatalogProtocolService {
         executor,
       );
       if (!dryRun && !result.permitted) {
+        if (
+          resourceType === 'product' &&
+          'protectedOrders' in result.blockingReferences &&
+          result.blockingReferences.protectedOrders > 0
+        ) {
+          throw new OrderHistoryProtectedError();
+        }
         throw new CatalogProtocolError(
           409,
           'catalog/conflict',
@@ -740,16 +752,33 @@ export class CatalogProtocolService {
         'Resource revision has changed.',
       );
     }
+    const orderInspection =
+      resourceType === 'product'
+        ? await this.orders.inspectProductOrderDeletion(id, executor)
+        : null;
     const blockingReferences =
       resourceType === 'category'
         ? await this.catalog.inspectCategoryDeletion(id, executor)
         : resourceType === 'product'
-          ? await this.catalog.inspectProductDeletion(id, executor)
+          ? {
+              destinationProducts: (
+                await this.catalog.inspectProductDeletion(id, executor)
+              ).destinationProducts,
+              protectedOrders: orderInspection?.protectedOrders ?? 0,
+            }
           : await this.catalog.inspectDestinationDeletion(id, executor);
     const permitted = Object.values(blockingReferences).every(
       (total) => total === 0,
     );
-    return { resourceType, resourceId: id, permitted, blockingReferences };
+    return {
+      resourceType,
+      resourceId: id,
+      permitted,
+      blockingReferences,
+      ...(orderInspection
+        ? { deletedOrderIds: orderInspection.deletedOrderIds }
+        : {}),
+    };
   }
 
   private getDeletionResource(
@@ -776,7 +805,13 @@ export class CatalogProtocolService {
       return this.catalog.deleteCategory(id, actor, options);
     }
     if (resourceType === 'product') {
-      return this.catalog.deleteProduct(id, actor, options);
+      await this.orders.deleteProductWithTechnicalCascade(
+        id,
+        actor,
+        expectedRevision,
+        executor,
+      );
+      return;
     }
     return this.catalog.deleteDestination(id, actor, options);
   }

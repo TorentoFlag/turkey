@@ -3,7 +3,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { and, desc, eq, inArray, isNotNull, ne } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNotNull, ne, sql } from 'drizzle-orm';
 import argon2 from 'argon2';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
@@ -22,7 +22,12 @@ import {
 } from '../../database/schema/index.js';
 import type { AuthenticatedUser } from '../auth/auth.service.js';
 import type { AuthenticatedAdmin } from '../admin-api/admin-api-auth.js';
-import { CatalogService } from '../catalog/catalog.service.js';
+import {
+  CatalogRevisionConflictError,
+  CatalogService,
+  type CatalogExecutor,
+} from '../catalog/catalog.service.js';
+import { PaymentsService } from '../payments/payments.service.js';
 
 const createOrderSchema = z
   .object({
@@ -62,11 +67,31 @@ export type OrderResponse = Readonly<{
   createdAt: Date;
 }>;
 
+export type ProductOrderDeletionInspection = Readonly<{
+  deletedOrderIds: readonly string[];
+  protectedOrders: number;
+}>;
+
+type OrderCommandOptions = Readonly<{
+  executor?: CatalogExecutor;
+  expectedRevision?: number;
+}>;
+
+export class OrderHistoryProtectedError extends Error {
+  readonly status = 409;
+  readonly type = 'catalog/order-history-protected';
+
+  constructor() {
+    super('Customer or financial order history prevents product deletion.');
+  }
+}
+
 @Injectable()
 export class OrdersService {
   constructor(
     private readonly database: DatabaseService,
     private readonly catalog: CatalogService,
+    private readonly paymentRecords: PaymentsService,
   ) {}
 
   async create(
@@ -117,6 +142,7 @@ export class OrdersService {
     }
 
     const order = await this.database.db.transaction(async (transaction) => {
+      await lockProductOrders(transaction, product.id);
       const inserted = await transaction
         .insert(orders)
         .values({
@@ -168,13 +194,27 @@ export class OrdersService {
     return toOrderResponse(order);
   }
 
-  async createScenarioOrder(): Promise<AuthenticatedUser & { readonly orderId: string }> {
+  async createScenarioOrder(): Promise<
+    AuthenticatedUser & { readonly orderId: string }
+  > {
     const scenarioEmail = 'scenario@vv-admin.invalid';
-    const createdUser = await this.database.db.insert(users).values({
-      email: scenarioEmail,
-      passwordHash: await argon2.hash(randomUUID()),
-    }).onConflictDoNothing().returning();
-    const user = createdUser[0] ?? (await this.database.db.select().from(users).where(eq(users.email, scenarioEmail)).limit(1))[0];
+    const createdUser = await this.database.db
+      .insert(users)
+      .values({
+        email: scenarioEmail,
+        passwordHash: await argon2.hash(randomUUID()),
+      })
+      .onConflictDoNothing()
+      .returning();
+    const user =
+      createdUser[0] ??
+      (
+        await this.database.db
+          .select()
+          .from(users)
+          .where(eq(users.email, scenarioEmail))
+          .limit(1)
+      )[0];
     if (!user) throw new Error('Scenario user initialization failed.');
     const product = (
       await this.database.db
@@ -194,7 +234,27 @@ export class OrdersService {
     if (!product || product.priceMinor === null || product.currency === null) {
       throw new BadRequestException('No payable active product for scenario.');
     }
-    const inserted = await this.database.db.insert(orders).values({ userId: user.id, productId: product.id, idempotencyKey: randomUUID(), productTitle: product.title, productType: product.type, priceMinor: product.priceMinor, currency: product.currency, email: scenarioEmail, phone: '+70000000000', deliveryAddress: product.type === 'physical' ? 'Scenario address' : null, isScenario: true }).returning({ id: orders.id });
+    const inserted = await this.database.db.transaction(async (transaction) => {
+      await lockProductOrders(transaction, product.id);
+      return transaction
+        .insert(orders)
+        .values({
+          userId: user.id,
+          productId: product.id,
+          idempotencyKey: randomUUID(),
+          productTitle: product.title,
+          productType: product.type,
+          priceMinor: product.priceMinor,
+          currency: product.currency,
+          email: scenarioEmail,
+          phone: '+70000000000',
+          deliveryAddress:
+            product.type === 'physical' ? 'Scenario address' : null,
+          isScenario: true,
+          isPurgeable: false,
+        })
+        .returning({ id: orders.id });
+    });
     return { id: user.id, email: user.email, orderId: inserted[0]!.id };
   }
 
@@ -213,7 +273,9 @@ export class OrdersService {
       await transaction
         .update(payments)
         .set({ state: 'failed', updatedAt: new Date() })
-        .where(and(eq(payments.orderId, orderId), eq(payments.state, 'pending')));
+        .where(
+          and(eq(payments.orderId, orderId), eq(payments.state, 'pending')),
+        );
     });
   }
 
@@ -281,8 +343,8 @@ export class OrdersService {
     return records[0];
   }
 
-  async listForAdmin() {
-    const records = await this.database.db
+  async listForAdmin(executor: CatalogExecutor = this.database.db) {
+    const records = await executor
       .select({
         order: orders,
         payment: {
@@ -309,10 +371,37 @@ export class OrdersService {
     }));
   }
 
+  async getForAdmin(id: string, executor: CatalogExecutor = this.database.db) {
+    const records = await executor
+      .select({
+        order: orders,
+        payment: {
+          state: payments.state,
+          providerPaymentId: payments.providerPaymentId,
+        },
+        refund: {
+          state: refunds.state,
+          providerRefundId: refunds.providerRefundId,
+          requestedAt: refunds.requestedAt,
+          confirmedAt: refunds.confirmedAt,
+          errorMessage: refunds.errorMessage,
+        },
+      })
+      .from(orders)
+      .leftJoin(payments, eq(payments.orderId, orders.id))
+      .leftJoin(refunds, eq(refunds.paymentId, payments.id))
+      .where(eq(orders.id, id))
+      .limit(1);
+    const record = records[0];
+    if (!record) throw new NotFoundException('Order was not found.');
+    return { ...record.order, payment: record.payment, refund: record.refund };
+  }
+
   async updateProcessing(
     id: string,
     actor: AuthenticatedAdmin,
     input: unknown,
+    options: OrderCommandOptions = {},
   ): Promise<Order> {
     const parsed = updateOrderProcessingSchema.safeParse(input);
 
@@ -320,7 +409,7 @@ export class OrdersService {
       throw new BadRequestException('Invalid order payload.');
     }
 
-    return this.database.db.transaction(async (transaction) => {
+    return this.executeWrite(options.executor, async (transaction) => {
       const records = await transaction
         .select()
         .from(orders)
@@ -332,18 +421,38 @@ export class OrdersService {
         throw new NotFoundException('Order was not found.');
       }
 
+      if (
+        options.expectedRevision !== undefined &&
+        current.revision !== options.expectedRevision
+      ) {
+        throw new CatalogRevisionConflictError();
+      }
+
       if (current.isProcessed === parsed.data.isProcessed) {
         return current;
       }
 
       const updated = await transaction
         .update(orders)
-        .set({ isProcessed: parsed.data.isProcessed })
-        .where(eq(orders.id, id))
+        .set({
+          isProcessed: parsed.data.isProcessed,
+          revision: sql`${orders.revision} + 1`,
+        })
+        .where(
+          options.expectedRevision === undefined
+            ? eq(orders.id, id)
+            : and(
+                eq(orders.id, id),
+                eq(orders.revision, options.expectedRevision),
+              ),
+        )
         .returning();
       const order = updated[0];
 
       if (!order) {
+        if (options.expectedRevision !== undefined) {
+          throw new CatalogRevisionConflictError();
+        }
         throw new NotFoundException('Order was not found.');
       }
 
@@ -360,6 +469,114 @@ export class OrdersService {
       return order;
     });
   }
+
+  async inspectProductOrderDeletion(
+    productId: string,
+    executor: CatalogExecutor = this.database.db,
+  ): Promise<ProductOrderDeletionInspection> {
+    await lockProductOrders(executor, productId);
+    const linkedOrders = await executor
+      .select({
+        id: orders.id,
+        isProcessed: orders.isProcessed,
+        isPurgeable: orders.isPurgeable,
+        isScenario: orders.isScenario,
+      })
+      .from(orders)
+      .where(eq(orders.productId, productId))
+      .for('update');
+    const financialOrderIds = await this.paymentRecords.listFinancialOrderIds(
+      linkedOrders.map((order) => order.id),
+      executor,
+    );
+    const deletedOrderIds = linkedOrders
+      .filter(
+        (order) =>
+          order.isScenario &&
+          order.isPurgeable &&
+          !order.isProcessed &&
+          !financialOrderIds.has(order.id),
+      )
+      .map((order) => order.id)
+      .sort();
+    return {
+      deletedOrderIds,
+      protectedOrders: linkedOrders.length - deletedOrderIds.length,
+    };
+  }
+
+  async deleteProductWithTechnicalCascade(
+    productId: string,
+    actor: AuthenticatedAdmin,
+    expectedRevision: number,
+    executor: CatalogExecutor,
+  ): Promise<ProductOrderDeletionInspection> {
+    const inspection = await this.inspectProductOrderDeletion(
+      productId,
+      executor,
+    );
+    if (inspection.protectedOrders > 0) {
+      throw new OrderHistoryProtectedError();
+    }
+    if (inspection.deletedOrderIds.length > 0) {
+      const deleted = await executor
+        .delete(orders)
+        .where(
+          and(
+            eq(orders.productId, productId),
+            eq(orders.isScenario, true),
+            eq(orders.isPurgeable, true),
+            eq(orders.isProcessed, false),
+            inArray(orders.id, [...inspection.deletedOrderIds]),
+          ),
+        )
+        .returning({ id: orders.id });
+      const deletedIds = deleted.map((order) => order.id).sort();
+      if (
+        deletedIds.length !== inspection.deletedOrderIds.length ||
+        deletedIds.some(
+          (orderId, index) => orderId !== inspection.deletedOrderIds[index],
+        )
+      ) {
+        throw new OrderHistoryProtectedError();
+      }
+    }
+    await this.catalog.deleteProduct(productId, actor, {
+      audit: false,
+      executor,
+      expectedRevision,
+    });
+    await executor.insert(auditLog).values({
+      actorId: actor.actorId,
+      action: 'product.deleted',
+      entityType: 'product',
+      entityId: productId,
+      payload: {
+        productId,
+        deletedOrderIds: inspection.deletedOrderIds,
+        deletedOrderCount: inspection.deletedOrderIds.length,
+      },
+    });
+    return inspection;
+  }
+
+  private executeWrite<T>(
+    executor: CatalogExecutor | undefined,
+    command: (executor: CatalogExecutor) => Promise<T>,
+  ): Promise<T> {
+    return executor
+      ? command(executor)
+      : this.database.db.transaction((transaction) => command(transaction));
+  }
+}
+
+function lockProductOrders(
+  executor: Pick<CatalogExecutor, 'execute'>,
+  productId: string,
+) {
+  return executor.execute(
+    sql`select pg_advisory_xact_lock(22094, hashtext(${productId}))`,
+  );
 }
 
 function toOrderResponse(

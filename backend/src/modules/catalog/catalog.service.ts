@@ -176,6 +176,7 @@ export type CatalogExecutor = Pick<
 >;
 
 export type CatalogCommandOptions = Readonly<{
+  audit?: boolean;
   expectedRevision?: number;
   executor?: CatalogExecutor;
 }>;
@@ -1168,13 +1169,15 @@ export class CatalogService {
         }
         throw new NotFoundException('Product was not found.');
       }
-      await transaction.insert(auditLog).values({
-        actorId: actor.actorId,
-        action: 'product.deleted',
-        entityType: 'product',
-        entityId: id,
-        payload: { slug: current.slug, categoryId: current.categoryId },
-      });
+      if (options.audit !== false) {
+        await transaction.insert(auditLog).values({
+          actorId: actor.actorId,
+          action: 'product.deleted',
+          entityType: 'product',
+          entityId: id,
+          payload: { slug: current.slug, categoryId: current.categoryId },
+        });
+      }
     });
 
     const key = current.imageUrl

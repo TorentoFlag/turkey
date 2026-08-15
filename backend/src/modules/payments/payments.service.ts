@@ -6,7 +6,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { z } from 'zod';
 import { DatabaseService } from '../../database/database.service.js';
 import {
@@ -14,6 +14,7 @@ import {
   outboxEvents,
   payments,
   providerWebhookEvents,
+  refunds,
   type Order,
   type Payment,
 } from '../../database/schema/index.js';
@@ -23,6 +24,8 @@ import type { AppEnv } from '../../config/env.js';
 
 export type CheckoutResponse = Readonly<{ checkoutUrl: string }>;
 type PayableOrder = Order & Readonly<{ priceMinor: number; currency: string }>;
+
+export type PaymentReadExecutor = Pick<DatabaseService['db'], 'select'>;
 
 const arcWebhookEventSchema = z
   .object({
@@ -76,6 +79,19 @@ export class PaymentsService {
     }
 
     return { checkoutUrl: persisted.checkoutUrl };
+  }
+
+  async listFinancialOrderIds(
+    orderIds: readonly string[],
+    executor: PaymentReadExecutor = this.database.db,
+  ): Promise<ReadonlySet<string>> {
+    if (orderIds.length === 0) return new Set();
+    const records = await executor
+      .select({ orderId: payments.orderId, refundId: refunds.id })
+      .from(payments)
+      .leftJoin(refunds, eq(refunds.paymentId, payments.id))
+      .where(inArray(payments.orderId, [...orderIds]));
+    return new Set(records.map((record) => record.orderId));
   }
 
   private checkoutReturnUrls(orderId: string): Readonly<{
