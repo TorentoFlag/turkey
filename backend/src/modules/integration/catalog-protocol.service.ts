@@ -380,33 +380,36 @@ export class CatalogProtocolService {
     context: MutationContext,
     destinationId: string,
     productId: string,
+    expectedRevision: number,
     input: unknown,
   ): Promise<ProtocolResponse> {
     const command = parseInput(destinationMembershipSchema, input);
-    return this.mutate(context, 200, async (actor, executor) =>
-      this.catalog.upsertProductDestination(
+    return this.mutate(context, 200, async (actor, executor) => {
+      await this.catalog.upsertProductDestination(
         destinationId,
         productId,
         actor,
         command,
-        { executor },
-      ),
-    );
+        { executor, expectedRevision },
+      );
+      return this.getDestinationResource(destinationId, executor);
+    });
   }
 
   async deleteDestinationProduct(
     context: MutationContext,
     destinationId: string,
     productId: string,
+    expectedRevision: number,
   ): Promise<ProtocolResponse> {
     return this.mutate(context, 200, async (actor, executor) => {
       await this.catalog.deleteProductDestination(
         destinationId,
         productId,
         actor,
-        { executor },
+        { executor, expectedRevision },
       );
-      return { destinationId, productId, deleted: true };
+      return this.getDestinationResource(destinationId, executor);
     });
   }
 
@@ -514,10 +517,19 @@ export class CatalogProtocolService {
       );
     }
     const rawBody = context.request.rawBody ?? Buffer.alloc(0);
+    const ifMatch = context.request.headers['if-match'];
+    const ifMatchFingerprint =
+      ifMatch === undefined
+        ? '\0'
+        : Array.isArray(ifMatch)
+          ? `\x01${ifMatch.join(',')}`
+          : `\x01${ifMatch}`;
     const requestFingerprint = createHash('sha256')
       .update(context.request.method.toUpperCase())
       .update('\0')
       .update(context.request.url)
+      .update('\0')
+      .update(ifMatchFingerprint)
       .update('\0')
       .update(rawBody)
       .digest('hex');
@@ -702,6 +714,14 @@ export class CatalogProtocolService {
         sortOrder: membership.sortOrder,
       })),
     };
+  }
+
+  private async getDestinationResource(id: string, executor: CatalogExecutor) {
+    const destination = await this.catalog.getDestination(id, executor);
+    if (!destination) {
+      throw new NotFoundException('Destination was not found.');
+    }
+    return this.toDestination(destination);
   }
 
   private async inspectDeletion(

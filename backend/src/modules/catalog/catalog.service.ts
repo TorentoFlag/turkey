@@ -27,6 +27,7 @@ import {
 } from '../media/product-media.service.js';
 
 const slugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const categoryTreeLock = sql`select pg_advisory_xact_lock(22094, 1)`;
 
 const createCategorySchema = z
   .object({
@@ -171,7 +172,7 @@ export type CatalogDestination = Destination &
 
 export type CatalogExecutor = Pick<
   DatabaseService['db'],
-  'delete' | 'insert' | 'select' | 'update'
+  'delete' | 'execute' | 'insert' | 'select' | 'update'
 >;
 
 export type CatalogCommandOptions = Readonly<{
@@ -215,26 +216,24 @@ export class CatalogService {
       throw new BadRequestException('Invalid category payload.');
     }
 
-    const command = parsed.data;
-
-    if (command.parentId) {
-      const parent = await this.findCategory(
-        command.parentId,
-        options.executor,
-      );
-
-      if (!parent) {
-        throw new NotFoundException('Parent category was not found.');
-      }
-
-      if (parent.parentId !== null) {
-        throw new BadRequestException(
-          'A category can have only one level of subcategories.',
-        );
-      }
-    }
-
     return this.executeWrite(options.executor, async (transaction) => {
+      await this.lockCategoryTree(transaction);
+      const command = parsed.data;
+
+      if (command.parentId) {
+        const parent = await this.findCategory(command.parentId, transaction);
+
+        if (!parent) {
+          throw new NotFoundException('Parent category was not found.');
+        }
+
+        if (parent.parentId !== null) {
+          throw new BadRequestException(
+            'A category can have only one level of subcategories.',
+          );
+        }
+      }
+
       const inserted = await transaction
         .insert(categories)
         .values(command)
@@ -274,28 +273,29 @@ export class CatalogService {
       throw new BadRequestException('Invalid category payload.');
     }
 
-    const current = await this.findCategory(id, options.executor);
-
-    if (!current) {
-      throw new NotFoundException('Category was not found.');
-    }
-
-    const changes = parsed.data;
-    await this.validateCategoryParentChange(
-      current,
-      changes.parentId,
-      options.executor,
-    );
-
-    if (changes.slug && changes.slug !== current.slug) {
-      await this.assertCategorySlugAvailable(
-        changes.slug,
-        current.id,
-        options.executor,
-      );
-    }
-
     return this.executeWrite(options.executor, async (transaction) => {
+      await this.lockCategoryTree(transaction);
+      const current = await this.findCategory(id, transaction);
+
+      if (!current) {
+        throw new NotFoundException('Category was not found.');
+      }
+
+      const changes = parsed.data;
+      await this.validateCategoryParentChange(
+        current,
+        changes.parentId,
+        transaction,
+      );
+
+      if (changes.slug && changes.slug !== current.slug) {
+        await this.assertCategorySlugAvailable(
+          changes.slug,
+          current.id,
+          transaction,
+        );
+      }
+
       const updated = await transaction
         .update(categories)
         .set({
@@ -624,24 +624,29 @@ export class CatalogService {
     if (!parsed.success) {
       throw new BadRequestException('Invalid destination product payload.');
     }
-    const [destination, product] = await Promise.all([
-      this.findDestination(destinationId, options.executor),
-      this.findProduct(productId, options.executor),
-    ]);
-
-    if (!destination) {
-      throw new NotFoundException('Destination was not found.');
-    }
-    if (!product) {
-      throw new NotFoundException('Product was not found.');
-    }
-    if (!destination.isActive || !product.isActive) {
-      throw new BadRequestException(
-        'Only active destinations and products can be related.',
-      );
-    }
-
     return this.executeWrite(options.executor, async (transaction) => {
+      const [destination, product] = await Promise.all([
+        this.findDestination(destinationId, transaction),
+        this.findProduct(productId, transaction),
+      ]);
+
+      if (!destination) {
+        throw new NotFoundException('Destination was not found.');
+      }
+      if (!product) {
+        throw new NotFoundException('Product was not found.');
+      }
+      if (!destination.isActive || !product.isActive) {
+        throw new BadRequestException(
+          'Only active destinations and products can be related.',
+        );
+      }
+
+      await this.incrementDestinationRevision(
+        destinationId,
+        options.expectedRevision,
+        transaction,
+      );
       const records = await transaction
         .insert(productDestinations)
         .values({ destinationId, productId, sortOrder: parsed.data.sortOrder })
@@ -675,6 +680,19 @@ export class CatalogService {
     options: CatalogCommandOptions = {},
   ): Promise<void> {
     await this.executeWrite(options.executor, async (transaction) => {
+      const destination = await this.findDestination(
+        destinationId,
+        transaction,
+      );
+      if (!destination) {
+        throw new NotFoundException('Destination was not found.');
+      }
+
+      await this.incrementDestinationRevision(
+        destinationId,
+        options.expectedRevision,
+        transaction,
+      );
       const records = await transaction
         .delete(productDestinations)
         .where(
@@ -1004,8 +1022,12 @@ export class CatalogService {
 
     const changes = parsed.data;
     const type = changes.type ?? current.type;
-    const priceMinor = changes.priceMinor ?? current.priceMinor;
-    const currency = changes.currency ?? current.currency;
+    const priceMinor = Object.hasOwn(changes, 'priceMinor')
+      ? changes.priceMinor
+      : current.priceMinor;
+    const currency = Object.hasOwn(changes, 'currency')
+      ? changes.currency
+      : current.currency;
     const isActive = changes.isActive ?? current.isActive;
 
     if (
@@ -1398,6 +1420,39 @@ export class CatalogService {
 
     if (existing[0]) {
       throw new ConflictException('Destination slug already exists.');
+    }
+  }
+
+  private async lockCategoryTree(executor: CatalogExecutor): Promise<void> {
+    await executor.execute(categoryTreeLock);
+  }
+
+  private async incrementDestinationRevision(
+    id: string,
+    expectedRevision: number | undefined,
+    executor: CatalogExecutor,
+  ): Promise<void> {
+    const updated = await executor
+      .update(destinations)
+      .set({
+        revision: sql`${destinations.revision} + 1`,
+        updatedAt: new Date(),
+      })
+      .where(
+        expectedRevision === undefined
+          ? eq(destinations.id, id)
+          : and(
+              eq(destinations.id, id),
+              eq(destinations.revision, expectedRevision),
+            ),
+      )
+      .returning({ id: destinations.id });
+
+    if (!updated[0]) {
+      if (expectedRevision !== undefined) {
+        throw new CatalogRevisionConflictError();
+      }
+      throw new NotFoundException('Destination was not found.');
     }
   }
 

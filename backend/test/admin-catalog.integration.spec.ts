@@ -186,6 +186,67 @@ describe('admin catalog API', () => {
     expect(thirdLevel.statusCode).toBe(400);
   });
 
+  it('serializes concurrent category moves and child creation at depth two', async () => {
+    app = await createApp(appModule);
+    const pairs = await Promise.all(
+      Array.from({ length: 4 }, async (_, index) => ({
+        parent: await createCategory(app!, {
+          name: `Параллельный родитель ${index}`,
+          slug: `concurrent-parent-${index}`,
+        }),
+        candidate: await createCategory(app!, {
+          name: `Параллельная категория ${index}`,
+          slug: `concurrent-candidate-${index}`,
+        }),
+        childSlug: `concurrent-child-${index}`,
+      })),
+    );
+
+    const results = await Promise.all(
+      pairs.map(async ({ parent, candidate, childSlug }) => {
+        const [move, child] = await Promise.all([
+          app!.inject({
+            method: 'PATCH',
+            url: `/v1/admin/categories/${candidate.id}`,
+            headers: adminHeaders(),
+            payload: { parentId: parent.id },
+          }),
+          app!.inject({
+            method: 'POST',
+            url: '/v1/admin/categories',
+            headers: adminHeaders(),
+            payload: {
+              name: childSlug,
+              slug: childSlug,
+              parentId: candidate.id,
+            },
+          }),
+        ]);
+        return [move.statusCode, child.statusCode];
+      }),
+    );
+
+    for (const statuses of results) {
+      expect(
+        statuses.filter((status) => status >= 200 && status < 300),
+      ).toHaveLength(1);
+      expect(statuses.filter((status) => status === 400)).toHaveLength(1);
+    }
+    const depth = await pool.query<{ max_depth: number }>(`
+      with recursive category_tree as (
+        select id, parent_id, 1 as depth
+        from categories
+        where parent_id is null
+        union all
+        select child.id, child.parent_id, category_tree.depth + 1
+        from categories child
+        join category_tree on child.parent_id = category_tree.id
+      )
+      select max(depth)::int as max_depth from category_tree
+    `);
+    expect(depth.rows[0]?.max_depth).toBeLessThanOrEqual(2);
+  });
+
   it('updates and deactivates a category while recording the actor', async () => {
     app = await createApp(appModule);
     const category = await createCategory(app, {
@@ -880,6 +941,45 @@ describe('admin catalog API', () => {
         entity_type: 'product',
         entity_id: product.id,
       },
+    ]);
+  });
+
+  it('rejects clearing either price field on an active payable product', async () => {
+    app = await createApp(appModule);
+    const category = await createCategory(app, {
+      name: 'Товары с обязательной ценой',
+      slug: 'required-price-products',
+    });
+    const product = await createProduct(app, {
+      categoryId: category.id,
+      title: 'Товар с обязательной ценой',
+      slug: 'required-price-product',
+      description: 'Активный физический товар с полной ценой.',
+      type: 'physical',
+      priceMinor: 100_000,
+      currency: 'TRY',
+    });
+
+    for (const payload of [{ priceMinor: null }, { currency: null }]) {
+      const response = await app.inject({
+        method: 'PATCH',
+        url: `/v1/admin/products/${product.id}`,
+        headers: adminHeaders(),
+        payload,
+      });
+
+      expect(response.statusCode).toBe(400);
+    }
+
+    const persisted = await pool.query<{
+      price_minor: number;
+      currency: string;
+      revision: number;
+    }>('select price_minor, currency, revision from products where id = $1', [
+      product.id,
+    ]);
+    expect(persisted.rows).toEqual([
+      { price_minor: 100_000, currency: 'TRY', revision: 1 },
     ]);
   });
 

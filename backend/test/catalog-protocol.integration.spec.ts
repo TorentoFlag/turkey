@@ -138,6 +138,27 @@ describe('Catalog Protocol v1', () => {
     expect(replay.statusCode).toBe(201);
     expect(replay.json()).toEqual(first.json());
 
+    const changedPreconditionRequest = signedRequest(
+      'POST',
+      '/admin/integration/catalog/v1/categories',
+      firstBody,
+      { idempotencyKey: firstRequest.headers['idempotency-key'] },
+    );
+    const changedPrecondition = await app.inject({
+      method: 'POST',
+      url: '/admin/integration/catalog/v1/categories',
+      headers: {
+        ...changedPreconditionRequest.headers,
+        'if-match': '"1"',
+      },
+      payload: firstBody,
+    });
+    expect(changedPrecondition.statusCode).toBe(409);
+    expect(changedPrecondition.json()).toMatchObject({
+      type: 'catalog/idempotency-conflict',
+      status: 409,
+    });
+
     const operationId = first.json<{ operationId: string }>().operationId;
     const operationPath = `/admin/integration/catalog/v1/operations/${operationId}`;
     const operation = await app.inject({
@@ -309,6 +330,41 @@ describe('Catalog Protocol v1', () => {
       },
     });
 
+    const clearPriceBody = JSON.stringify({ price: null });
+    const clearPrice = await app.inject({
+      method: 'PATCH',
+      url: patchPath,
+      headers: {
+        ...signedRequest('PATCH', patchPath, clearPriceBody).headers,
+        'if-match': '"2"',
+      },
+      payload: clearPriceBody,
+    });
+    expect(clearPrice.statusCode).toBe(400);
+    expect(clearPrice.headers['content-type']).toContain(
+      'application/problem+json',
+    );
+    expect(clearPrice.json()).toMatchObject({
+      type: 'catalog/invalid-request',
+      status: 400,
+    });
+
+    const persistedOffer = await app.inject({
+      method: 'GET',
+      url: `/admin/integration/catalog/v1/offers/${product.resource.id}`,
+      headers: signedRequest(
+        'GET',
+        `/admin/integration/catalog/v1/offers/${product.resource.id}`,
+      ).headers,
+    });
+    expect(persistedOffer.json()).toMatchObject({
+      resource: {
+        revision: '2',
+        price: { amountMinor: 25_000, currency: 'RUB', scale: 100 },
+        isActive: true,
+      },
+    });
+
     const missingPrecondition = await app.inject({
       method: 'DELETE',
       url: patchPath,
@@ -381,21 +437,88 @@ describe('Catalog Protocol v1', () => {
     });
     const membershipPath = `/admin/integration/catalog/v1/destinations/${destination.resource.id}/products/${product.resource.id}`;
     const membershipBody = JSON.stringify({ sortOrder: 7 });
-    const membership = await app.inject({
+
+    const missingPutPrecondition = await app.inject({
       method: 'PUT',
       url: membershipPath,
       headers: signedRequest('PUT', membershipPath, membershipBody).headers,
       payload: membershipBody,
     });
+    expect(missingPutPrecondition.statusCode).toBe(428);
+
+    const membership = await app.inject({
+      method: 'PUT',
+      url: membershipPath,
+      headers: {
+        ...signedRequest('PUT', membershipPath, membershipBody).headers,
+        'if-match': '"1"',
+      },
+      payload: membershipBody,
+    });
 
     expect(membership.statusCode).toBe(200);
+    expect(membership.headers.etag).toBe('"2"');
     expect(membership.json()).toMatchObject({
       resource: {
-        destinationId: destination.resource.id,
-        productId: product.resource.id,
-        sortOrder: 7,
+        id: destination.resource.id,
+        revision: '2',
+        products: [
+          {
+            productId: product.resource.id,
+            sortOrder: 7,
+          },
+        ],
       },
     });
+
+    const changedMembershipBody = JSON.stringify({ sortOrder: 8 });
+    const staleMembership = await app.inject({
+      method: 'PUT',
+      url: membershipPath,
+      headers: {
+        ...signedRequest('PUT', membershipPath, changedMembershipBody).headers,
+        'if-match': '"1"',
+      },
+      payload: changedMembershipBody,
+    });
+    expect(staleMembership.statusCode).toBe(412);
+
+    const missingDeletePrecondition = await app.inject({
+      method: 'DELETE',
+      url: membershipPath,
+      headers: signedRequest('DELETE', membershipPath).headers,
+    });
+    expect(missingDeletePrecondition.statusCode).toBe(428);
+
+    const deletedMembership = await app.inject({
+      method: 'DELETE',
+      url: membershipPath,
+      headers: {
+        ...signedRequest('DELETE', membershipPath).headers,
+        'if-match': '"2"',
+      },
+    });
+    expect(deletedMembership.statusCode).toBe(200);
+    expect(deletedMembership.headers.etag).toBe('"3"');
+    expect(deletedMembership.json()).toMatchObject({
+      resource: {
+        id: destination.resource.id,
+        revision: '3',
+        products: [],
+      },
+    });
+
+    const restoredMembership = await app.inject({
+      method: 'PUT',
+      url: membershipPath,
+      headers: {
+        ...signedRequest('PUT', membershipPath, membershipBody).headers,
+        'if-match': '"3"',
+      },
+      payload: membershipBody,
+    });
+    expect(restoredMembership.statusCode).toBe(200);
+    expect(restoredMembership.headers.etag).toBe('"4"');
 
     const deletePath = `/admin/integration/catalog/v1/destinations/${destination.resource.id}?dryRun=true`;
     const dryRun = await app.inject({
@@ -403,7 +526,7 @@ describe('Catalog Protocol v1', () => {
       url: deletePath,
       headers: {
         ...signedRequest('DELETE', deletePath).headers,
-        'if-match': '"1"',
+        'if-match': '"4"',
       },
     });
 
@@ -456,7 +579,10 @@ describe('Catalog Protocol v1', () => {
     await app.inject({
       method: 'PUT',
       url: membershipPath,
-      headers: signedRequest('PUT', membershipPath, membershipBody).headers,
+      headers: {
+        ...signedRequest('PUT', membershipPath, membershipBody).headers,
+        'if-match': '"1"',
+      },
       payload: membershipBody,
     });
     const deletePath = `/admin/integration/catalog/v1/products/${product.resource.id}`;
@@ -554,6 +680,44 @@ describe('Catalog Protocol v1', () => {
       ).rows[0]?.consumed_at,
     ).toBeInstanceOf(Date);
 
+    const destinationUpload = await app.inject({
+      method: 'POST',
+      url: uploadPath,
+      headers: {
+        ...signedRequest('POST', uploadPath, multipart).headers,
+        'content-type': `multipart/form-data; boundary=${multipartBoundary}`,
+      },
+      payload: multipart,
+    });
+    expect(destinationUpload.statusCode).toBe(201);
+    const destinationMedia = destinationUpload.json<{
+      resource: { id: string; url: string };
+    }>().resource;
+    const destination = await createDestination(app, {
+      name: { ru: 'Направление с фото' },
+      slug: 'protocol-destination-with-photo',
+      description: { ru: 'Описание направления с фото.' },
+      image: { ...destinationMedia, alt: { ru: 'Фото направления' } },
+      sortOrder: 0,
+      isActive: true,
+      attributes: { region: 'Мраморноморский регион' },
+    });
+    expect(destination.resource.image).toEqual(
+      expect.objectContaining({
+        id: destinationMedia.id,
+        url: destinationMedia.url,
+      }),
+    );
+    expect(
+      (
+        await pool.query<{ consumed_at: Date | null }>(
+          'select consumed_at from catalog_protocol_uploads where id = $1',
+          [destinationMedia.id],
+        )
+      ).rows[0]?.consumed_at,
+    ).toBeInstanceOf(Date);
+    expect(putWebp).toHaveBeenCalledTimes(2);
+
     const forged = await createProductResponse(app, {
       categoryId: category.resource.id,
       title: { ru: 'Поддельное фото' },
@@ -636,7 +800,13 @@ async function createProductResponse(
 async function createDestination(
   app: NestFastifyApplication,
   input: Record<string, unknown>,
-): Promise<ProtocolResource<{ id: string }>> {
+): Promise<
+  ProtocolResource<{
+    id: string;
+    revision: string;
+    image: { id: string; url: string } | null;
+  }>
+> {
   const body = JSON.stringify(input);
   const path = '/admin/integration/catalog/v1/destinations';
   const response = await app.inject({
@@ -653,6 +823,7 @@ function signedRequest(
   method: string,
   path: string,
   body: string | Buffer = '',
+  options: Readonly<{ idempotencyKey?: string }> = {},
 ) {
   const timestamp = new Date().toISOString();
   const requestId = randomUUID();
@@ -676,7 +847,7 @@ function signedRequest(
       'x-vv-signature-version': '1',
       'x-vv-signature': `sha256=${signature}`,
       ...(['POST', 'PATCH', 'PUT', 'DELETE'].includes(method)
-        ? { 'idempotency-key': randomUUID() }
+        ? { 'idempotency-key': options.idempotencyKey ?? randomUUID() }
         : {}),
     },
   };

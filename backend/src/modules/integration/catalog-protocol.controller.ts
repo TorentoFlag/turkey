@@ -319,6 +319,7 @@ export class CatalogProtocolController {
   upsertDestinationProduct(
     @Param('id') destinationId: string,
     @Param('productId') productId: string,
+    @Headers('if-match') ifMatch: string | undefined,
     @ProtocolActor() actor: AuthenticatedProtocolActor,
     @Req() request: FastifyRequest,
     @Res({ passthrough: true }) reply: FastifyReply,
@@ -330,6 +331,7 @@ export class CatalogProtocolController {
         { actor, request },
         destinationId,
         productId,
+        parseExpectedRevision(ifMatch),
         body,
       ),
     );
@@ -339,6 +341,7 @@ export class CatalogProtocolController {
   deleteDestinationProduct(
     @Param('id') destinationId: string,
     @Param('productId') productId: string,
+    @Headers('if-match') ifMatch: string | undefined,
     @ProtocolActor() actor: AuthenticatedProtocolActor,
     @Req() request: FastifyRequest,
     @Res({ passthrough: true }) reply: FastifyReply,
@@ -349,6 +352,7 @@ export class CatalogProtocolController {
         { actor, request },
         destinationId,
         productId,
+        parseExpectedRevision(ifMatch),
       ),
     );
   }
