@@ -3,7 +3,16 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { and, desc, eq, inArray, isNotNull, ne, sql } from 'drizzle-orm';
+import {
+  and,
+  desc,
+  eq,
+  inArray,
+  isNotNull,
+  ne,
+  notExists,
+  sql,
+} from 'drizzle-orm';
 import argon2 from 'argon2';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
@@ -528,6 +537,19 @@ export class OrdersService {
             eq(orders.isPurgeable, true),
             eq(orders.isProcessed, false),
             inArray(orders.id, [...inspection.deletedOrderIds]),
+            notExists(
+              executor
+                .select({ id: payments.id })
+                .from(payments)
+                .where(eq(payments.orderId, orders.id)),
+            ),
+            notExists(
+              executor
+                .select({ id: refunds.id })
+                .from(refunds)
+                .innerJoin(payments, eq(refunds.paymentId, payments.id))
+                .where(eq(payments.orderId, orders.id)),
+            ),
           ),
         )
         .returning({ id: orders.id });

@@ -329,6 +329,85 @@ describe('Store Orders Protocol v1', () => {
     );
   });
 
+  it('rechecks financial history in the physical delete when inspection becomes stale', async () => {
+    app = await createApp(appModule);
+    const fixture = await createOrderFixture(pool, {
+      isPurgeable: true,
+      isScenario: true,
+    });
+    const { OrdersService } = await import(
+      '../src/modules/orders/orders.service.js'
+    );
+    vi.spyOn(
+      app.get(OrdersService),
+      'inspectProductOrderDeletion',
+    ).mockResolvedValue({
+      deletedOrderIds: [fixture.orderId],
+      protectedOrders: 0,
+    });
+    const paymentId = await insertFinancialHistory(pool, fixture.orderId);
+    const path = `/admin/integration/catalog/v1/products/${fixture.productId}`;
+
+    const response = await app.inject({
+      method: 'DELETE',
+      url: path,
+      headers: {
+        ...signedRequest('DELETE', path).headers,
+        'if-match': '"1"',
+      },
+    });
+
+    expect(response.statusCode, response.body).toBe(409);
+    expect(response.json()).toMatchObject({
+      type: 'catalog/order-history-protected',
+      status: 409,
+    });
+    await expectHistoryToRemain(pool, fixture, paymentId);
+  });
+
+  it('serializes a concurrent financial writer before technical deletion', async () => {
+    app = await createApp(appModule);
+    const fixture = await createOrderFixture(pool, {
+      isPurgeable: true,
+      isScenario: true,
+    });
+    const writer = await pool.connect();
+    let writerFinished = false;
+    try {
+      await writer.query('begin');
+      const paymentId = await insertFinancialHistory(writer, fixture.orderId);
+      const path = `/admin/integration/catalog/v1/products/${fixture.productId}`;
+      const deletion = app.inject({
+        method: 'DELETE',
+        url: path,
+        headers: {
+          ...signedRequest('DELETE', path).headers,
+          'if-match': '"1"',
+        },
+      });
+
+      const race = await Promise.race([
+        deletion.then(() => 'settled' as const),
+        delay(100).then(() => 'blocked' as const),
+      ]);
+      expect(race).toBe('blocked');
+
+      await writer.query('commit');
+      writerFinished = true;
+      const response = await deletion;
+
+      expect(response.statusCode, response.body).toBe(409);
+      expect(response.json()).toMatchObject({
+        type: 'catalog/order-history-protected',
+        status: 409,
+      });
+      await expectHistoryToRemain(pool, fixture, paymentId);
+    } finally {
+      if (!writerFinished) await writer.query('rollback');
+      writer.release();
+    }
+  });
+
   it.each([
     ['customer order', { isPurgeable: true, isScenario: false }],
     ['non-purgeable scenario', { isPurgeable: false, isScenario: true }],
@@ -485,6 +564,59 @@ async function createOrderFixture(pool: Pool, options: FixtureOptions = {}) {
     }
   }
   return { categoryId, orderId, productId, userId };
+}
+
+type QueryExecutor = Pick<Pool, 'query'>;
+
+async function insertFinancialHistory(
+  executor: QueryExecutor,
+  orderId: string,
+): Promise<string> {
+  const payment = await executor.query<{ id: string }>(
+    `insert into payments
+      (order_id, provider_payment_id, idempotency_key, amount_minor, currency, state)
+     values ($1, $2, $3, 7500, 'RUB', 'succeeded')
+     returning id`,
+    [orderId, randomUUID(), randomUUID()],
+  );
+  const paymentId = payment.rows[0]!.id;
+  await executor.query(
+    `insert into refunds
+      (payment_id, provider_refund_id, amount_minor, currency, idempotency_key, state)
+     values ($1, $2, 7500, 'RUB', $3, 'succeeded')`,
+    [paymentId, randomUUID(), randomUUID()],
+  );
+  return paymentId;
+}
+
+async function expectHistoryToRemain(
+  pool: Pool,
+  fixture: Readonly<{ orderId: string; productId: string }>,
+  paymentId: string,
+) {
+  await expect(
+    pool.query(
+      `select
+        exists(select 1 from products where id = $1) as product_exists,
+        exists(select 1 from orders where id = $2) as order_exists,
+        exists(select 1 from payments where id = $3) as payment_exists,
+        exists(select 1 from refunds where payment_id = $3) as refund_exists`,
+      [fixture.productId, fixture.orderId, paymentId],
+    ),
+  ).resolves.toMatchObject({
+    rows: [
+      {
+        product_exists: true,
+        order_exists: true,
+        payment_exists: true,
+        refund_exists: true,
+      },
+    ],
+  });
+}
+
+function delay(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
 function signedRequest(method: string, path: string, body = '') {
