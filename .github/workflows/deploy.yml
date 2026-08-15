@@ -17,6 +17,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
+      - name: Checkout deployment script
+        uses: actions/checkout@v4
+
       - name: Configure pinned SSH access
         env:
           DEPLOY_HOST: ${{ secrets.TURKIYE_DEPLOY_HOST }}
