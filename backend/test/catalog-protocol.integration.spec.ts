@@ -159,7 +159,11 @@ describe('Catalog Protocol v1', () => {
       status: 409,
     });
 
-    const operationId = first.json<{ operationId: string }>().operationId;
+    const firstResponse = first.json<{
+      operationId: string;
+      resource: Record<string, unknown>;
+    }>();
+    const operationId = firstResponse.operationId;
     const operationPath = `/admin/integration/catalog/v1/operations/${operationId}`;
     const operation = await app.inject({
       method: 'GET',
@@ -181,9 +185,16 @@ describe('Catalog Protocol v1', () => {
       status: 'completed',
       response: {
         status: 201,
-        body: first.json(),
+        body: { resource: firstResponse.resource },
       },
     });
+    expect(JSON.stringify(recovery.json())).not.toContain('operationId');
+    expect(recovery.json()).not.toHaveProperty('actorId');
+    expect(recovery.json()).not.toHaveProperty('idempotencyKey');
+    expect(recovery.json()).not.toHaveProperty('requestFingerprint');
+    expect(recovery.json()).not.toHaveProperty('path');
+    expect(recovery.json()).not.toHaveProperty('createdAt');
+    expect(recovery.json()).not.toHaveProperty('completedAt');
 
     const second = await createCategory(app, {
       name: { ru: 'Трансферы' },

@@ -247,7 +247,7 @@ export class ProtocolOperationsService {
     return {
       requestId: operation.requestId,
       response: {
-        body: operation.responseBody,
+        body: toSafeRecoveryBody(operation.responseBody),
         status: operation.responseStatus,
       },
       status: operation.state,
@@ -284,4 +284,32 @@ export class ProtocolOperationsService {
 
     return persisted;
   }
+}
+
+function toSafeRecoveryBody(body: unknown): unknown {
+  if (!isRecord(body)) {
+    throw new Error('Unsupported terminal protocol operation response.');
+  }
+
+  if ('resource' in body) {
+    return { resource: body.resource };
+  }
+
+  if (
+    typeof body.type === 'string' &&
+    typeof body.title === 'string' &&
+    typeof body.status === 'number'
+  ) {
+    return {
+      type: body.type,
+      title: body.title,
+      status: body.status,
+    };
+  }
+
+  throw new Error('Unsupported terminal protocol operation response.');
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
 }

@@ -129,6 +129,10 @@ describe('Store Orders Protocol v1', () => {
     });
     expect(replay.statusCode).toBe(200);
     expect(replay.json()).toEqual(first.json());
+    const firstResponse = first.json<{
+      operationId: string;
+      resource: Record<string, unknown>;
+    }>();
 
     const recoveryPath = `/admin/integration/store-orders/v1/operations/by-request/${request.requestId}`;
     const recovery = await app.inject({
@@ -142,9 +146,16 @@ describe('Store Orders Protocol v1', () => {
       status: 'completed',
       response: {
         status: 200,
-        body: first.json(),
+        body: { resource: firstResponse.resource },
       },
     });
+    expect(JSON.stringify(recovery.json())).not.toContain('operationId');
+    expect(recovery.json()).not.toHaveProperty('actorId');
+    expect(recovery.json()).not.toHaveProperty('idempotencyKey');
+    expect(recovery.json()).not.toHaveProperty('requestFingerprint');
+    expect(recovery.json()).not.toHaveProperty('path');
+    expect(recovery.json()).not.toHaveProperty('createdAt');
+    expect(recovery.json()).not.toHaveProperty('completedAt');
     expect(
       await pool.query(
         'select actor_id, action, entity_id from audit_log where entity_id = $1 order by created_at',
@@ -161,11 +172,12 @@ describe('Store Orders Protocol v1', () => {
     });
 
     const staleBody = JSON.stringify({ isProcessed: false });
+    const staleRequest = signedRequest('PATCH', path, staleBody);
     const stale = await app.inject({
       method: 'PATCH',
       url: path,
       headers: {
-        ...signedRequest('PATCH', path, staleBody).headers,
+        ...staleRequest.headers,
         'if-match': '"1"',
       },
       payload: staleBody,
@@ -175,6 +187,27 @@ describe('Store Orders Protocol v1', () => {
       type: 'catalog/revision-conflict',
       status: 412,
     });
+
+    const failedRecoveryPath = `/admin/integration/store-orders/v1/operations/by-request/${staleRequest.requestId}`;
+    const failedRecovery = await app.inject({
+      method: 'GET',
+      url: failedRecoveryPath,
+      headers: signedRequest('GET', failedRecoveryPath).headers,
+    });
+    expect(failedRecovery.statusCode).toBe(200);
+    expect(failedRecovery.json()).toEqual({
+      requestId: staleRequest.requestId,
+      status: 'failed',
+      response: {
+        status: 412,
+        body: {
+          type: 'catalog/revision-conflict',
+          title: 'Resource revision has changed.',
+          status: 412,
+        },
+      },
+    });
+    expect(JSON.stringify(failedRecovery.json())).not.toContain('operationId');
   });
 
   it('requests a full refund once and replays the terminal protocol response', async () => {
