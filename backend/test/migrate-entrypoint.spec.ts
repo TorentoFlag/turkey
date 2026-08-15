@@ -42,6 +42,8 @@ describe('db:migrate entrypoint', () => {
               'postgresql://turkiye:turkiye@127.0.0.1:1/turkiye_test',
             LOG_LEVEL: 'warn',
             ADMIN_API_KEY: 'test-static-admin-key',
+            VV_ADMIN_INTEGRATION_SECRET: 'test-vv-admin-integration-secret',
+            VV_ADMIN_INTEGRATION_SITE_KEY: 'turkiye',
             MINIO_ENDPOINT: 'http://127.0.0.1:9000',
             MINIO_BUCKET: 'turkiye-test-media',
             MINIO_ACCESS_KEY: 'test-minio-access-key',

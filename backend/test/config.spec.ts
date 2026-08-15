@@ -7,6 +7,8 @@ const valid = {
   DATABASE_URL: 'postgresql://user:password@127.0.0.1:5432/turkiye_test',
   LOG_LEVEL: 'warn',
   ADMIN_API_KEY: 'test-static-admin-key',
+  VV_ADMIN_INTEGRATION_SECRET: 'test-vv-admin-integration-secret',
+  VV_ADMIN_INTEGRATION_SITE_KEY: 'turkiye',
   MINIO_ENDPOINT: 'http://minio:9000',
   MINIO_BUCKET: 'turkiye-catalog-media',
   MINIO_ACCESS_KEY: 'catalog-media-app',
@@ -22,6 +24,8 @@ describe('parseEnv', () => {
       DATABASE_URL: valid.DATABASE_URL,
       LOG_LEVEL: 'warn',
       ADMIN_API_KEY: valid.ADMIN_API_KEY,
+      VV_ADMIN_INTEGRATION_SECRET: valid.VV_ADMIN_INTEGRATION_SECRET,
+      VV_ADMIN_INTEGRATION_SITE_KEY: valid.VV_ADMIN_INTEGRATION_SITE_KEY,
       MINIO_ENDPOINT: valid.MINIO_ENDPOINT,
       MINIO_BUCKET: valid.MINIO_BUCKET,
       MINIO_ACCESS_KEY: valid.MINIO_ACCESS_KEY,
@@ -41,6 +45,8 @@ describe('parseEnv', () => {
     { ...valid, NODE_ENV: 'preview' },
     { ...valid, ADMIN_API_KEY: undefined },
     { ...valid, ADMIN_API_KEY: '   ' },
+    { ...valid, VV_ADMIN_INTEGRATION_SECRET: undefined },
+    { ...valid, VV_ADMIN_INTEGRATION_SITE_KEY: '   ' },
     { ...valid, WORKER_POLL_INTERVAL_MS: '249' },
   ])('rejects invalid server configuration', (input) => {
     expect(() => parseEnv(input)).toThrow(/configuration/i);

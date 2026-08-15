@@ -1,0 +1,2 @@
+DROP INDEX "catalog_protocol_operations_site_idempotency_idx";--> statement-breakpoint
+CREATE UNIQUE INDEX "catalog_protocol_operations_site_idempotency_idx" ON "catalog_protocol_operations" USING btree ("site_key","idempotency_key");

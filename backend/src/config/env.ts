@@ -17,6 +17,8 @@ const envSchema = z.object({
     }, 'DATABASE_URL must use the postgresql protocol'),
   LOG_LEVEL: z.enum(logLevels).default('info'),
   ADMIN_API_KEY: z.string().trim().min(1),
+  VV_ADMIN_INTEGRATION_SECRET: z.string().trim().min(1),
+  VV_ADMIN_INTEGRATION_SITE_KEY: z.string().trim().min(1).max(128),
   MINIO_ENDPOINT: z.string().url(),
   MINIO_BUCKET: z.string().trim().min(3).max(63),
   MINIO_ACCESS_KEY: z.string().trim().min(3),

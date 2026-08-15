@@ -8,6 +8,8 @@ import { CatalogModule } from './modules/catalog/catalog.module.js';
 import { NotificationsModule } from './modules/notifications/notifications.module.js';
 import { OrdersModule } from './modules/orders/orders.module.js';
 import { PaymentsModule } from './modules/payments/payments.module.js';
+import { ProtocolAuthGuard } from './modules/integration/protocol-auth.guard.js';
+import { ProtocolOperationsService } from './modules/integration/protocol-operations.service.js';
 
 @Module({
   imports: [
@@ -21,5 +23,6 @@ import { PaymentsModule } from './modules/payments/payments.module.js';
     NotificationsModule,
     AuditModule,
   ],
+  providers: [ProtocolAuthGuard, ProtocolOperationsService],
 })
 export class AppModule {}
