@@ -186,6 +186,47 @@ describe('Turkiye synthetic checkout scenario', () => {
     ).resolves.toMatchObject({ rows: [{ count: 0 }] });
   });
 
+  it('returns payable-product not_configured with no database or provider writes', async () => {
+    process.env.ARC_SECRET_API_KEY = 'sk_test_scenario';
+    process.env.WEB_APP_ORIGIN = 'https://turkeyplanners.test';
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    app = await createApp(appModule);
+    const body = JSON.stringify(scenarioBody());
+
+    const response = await app.inject({
+      method: 'POST',
+      url: scenarioPath,
+      headers: signedScenarioHeaders(body),
+      payload: body,
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      status: 'down',
+      payment: { reached: false },
+      metadata: {
+        outcome: 'not_configured',
+        reason: 'payable_product_not_configured',
+      },
+    });
+    const counts = await Promise.all(
+      [
+        'synthetic_scenario_runs',
+        'audit_log',
+        'orders',
+        'payments',
+        'users',
+      ].map((table) =>
+        pool.query(`select count(*)::int as count from ${table}`),
+      ),
+    );
+    expect(counts.map((result) => result.rows[0].count)).toEqual([
+      0, 0, 0, 0, 0,
+    ]);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it('creates only an isScenario order and truthfully reaches hosted checkout', async () => {
     process.env.ARC_SECRET_API_KEY = 'sk_test_scenario';
     process.env.WEB_APP_ORIGIN = 'https://turkeyplanners.test';

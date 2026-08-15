@@ -51,6 +51,9 @@ export class TurkiyeSyntheticScenarioService {
     if (!this.sandboxCheckoutConfigured()) {
       return notConfiguredResult('sandbox_payment_proof_not_configured');
     }
+    if (!(await this.orders.hasPayableScenarioProduct())) {
+      return notConfiguredResult('payable_product_not_configured');
+    }
 
     const begin = await this.begin(input);
     if (!begin.owned) return begin.response;

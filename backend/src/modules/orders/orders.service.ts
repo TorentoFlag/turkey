@@ -206,6 +206,11 @@ export class OrdersService {
   async createScenarioOrder(): Promise<
     AuthenticatedUser & { readonly orderId: string }
   > {
+    const product = await this.findPayableScenarioProduct();
+    if (!product || product.priceMinor === null || product.currency === null) {
+      throw new BadRequestException('No payable active product for scenario.');
+    }
+
     const scenarioEmail = 'scenario@vv-admin.invalid';
     const createdUser = await this.database.db
       .insert(users)
@@ -225,24 +230,6 @@ export class OrdersService {
           .limit(1)
       )[0];
     if (!user) throw new Error('Scenario user initialization failed.');
-    const product = (
-      await this.database.db
-        .select()
-        .from(products)
-        .where(
-          and(
-            eq(products.isActive, true),
-            ne(products.type, 'booking'),
-            isNotNull(products.priceMinor),
-            isNotNull(products.currency),
-            inArray(products.currency, ['RUB', 'KZT', 'UZS']),
-          ),
-        )
-        .limit(1)
-    )[0];
-    if (!product || product.priceMinor === null || product.currency === null) {
-      throw new BadRequestException('No payable active product for scenario.');
-    }
     const inserted = await this.database.db.transaction(async (transaction) => {
       await lockProductOrders(transaction, product.id);
       return transaction
@@ -265,6 +252,28 @@ export class OrdersService {
         .returning({ id: orders.id });
     });
     return { id: user.id, email: user.email, orderId: inserted[0]!.id };
+  }
+
+  async hasPayableScenarioProduct(): Promise<boolean> {
+    return (await this.findPayableScenarioProduct()) !== undefined;
+  }
+
+  private async findPayableScenarioProduct(): Promise<Product | undefined> {
+    return (
+      await this.database.db
+        .select()
+        .from(products)
+        .where(
+          and(
+            eq(products.isActive, true),
+            ne(products.type, 'booking'),
+            isNotNull(products.priceMinor),
+            isNotNull(products.currency),
+            inArray(products.currency, ['RUB', 'KZT', 'UZS']),
+          ),
+        )
+        .limit(1)
+    )[0];
   }
 
   async cleanupScenarioOrder(orderId: string): Promise<void> {
